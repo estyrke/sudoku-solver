@@ -304,6 +304,10 @@ window.addEventListener("paste", (e) => {
 document.querySelectorAll(".mode").forEach((b) =>
   b.addEventListener("click", () => setMode(b.dataset.mode))
 );
+document.querySelectorAll(".num[data-digit]").forEach((b) =>
+  b.addEventListener("click", () => inputDigit(Number(b.dataset.digit)))
+);
+document.getElementById("numClear").addEventListener("click", clearCell);
 document.getElementById("getHint").addEventListener("click", getHint);
 document.getElementById("confirmRead").addEventListener("click", confirmReading);
 applyBtn.addEventListener("click", applyStep);
