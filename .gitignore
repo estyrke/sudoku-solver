@@ -4,3 +4,5 @@ __pycache__/
 .pytest_cache/
 # learned digit exemplars are machine/app-specific
 templates/[1-9]/
+.vercel
+.env*
