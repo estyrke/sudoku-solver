@@ -40,13 +40,20 @@ h1 { margin: 0 0 2px; font-size: 24px; }
 .board-wrap { flex: 0 0 auto; }
 .panel { flex: 1 1 240px; min-width: 240px; }
 
+@media (max-width: 640px) {
+  .layout { flex-direction: column; gap: 16px; }
+  .panel { min-width: 0; }
+}
+
 .board {
+  --cell: min(52px, calc((100vw - 32px) / 9));
   display: grid;
-  grid-template-columns: repeat(9, 52px);
-  grid-template-rows: repeat(9, 52px);
+  grid-template-columns: repeat(9, var(--cell));
+  grid-template-rows: repeat(9, var(--cell));
   border: 3px solid var(--line-bold);
   background: var(--bg);
   width: max-content;
+  max-width: 100%;
   outline: none;
 }
 
@@ -58,6 +65,7 @@ h1 { margin: 0 0 2px; font-size: 24px; }
   justify-content: center;
   cursor: pointer;
   user-select: none;
+  touch-action: manipulation;
 }
 /* thick box separators */
 .cell[data-c="2"], .cell[data-c="5"] { border-right: 2px solid var(--line-bold); }
@@ -87,6 +95,14 @@ h1 { margin: 0 0 2px; font-size: 24px; }
 .modes, .actions { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
 .hintkeys { font-size: 12px; color: #8a90a0; margin-left: 4px; }
 
+.numpad {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  max-width: 100%;
+}
+
 button {
   font: inherit;
   padding: 7px 12px;
@@ -94,12 +110,18 @@ button {
   border-radius: 7px;
   background: #fff;
   cursor: pointer;
+  touch-action: manipulation;
 }
 button:hover { background: #f0f2f5; }
 button:disabled { opacity: .5; cursor: default; }
 .mode.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 .primary:hover { background: #0f50a0; }
+.num { font-size: 18px; padding: 10px 0; }
+
+@media (max-width: 640px) {
+  .mode, .num { min-height: 44px; }
+}
 
 .panel h2 { font-size: 16px; margin: 0 0 8px; }
 .hint {
