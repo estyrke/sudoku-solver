@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# learned digit exemplars are machine/app-specific
+templates/[1-9]/
