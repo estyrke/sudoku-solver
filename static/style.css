@@ -24,6 +24,28 @@ main { max-width: 880px; margin: 0 auto; padding: 24px 16px 64px; }
 h1 { margin: 0 0 2px; font-size: 24px; }
 .sub { margin: 0 0 16px; color: #5b616e; }
 
+.tabbar {
+  display: flex;
+  gap: 4px;
+  margin: 16px 0 18px;
+  border-bottom: 2px solid var(--line);
+}
+.tabbar .tab {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 8px 14px;
+  font-weight: 600;
+  color: #5b616e;
+  margin-bottom: -2px;
+  border-bottom: 2px solid transparent;
+}
+.tabbar .tab:hover { background: #f0f2f5; }
+.tabbar .tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
 .drop {
   border: 2px dashed var(--line);
   border-radius: 10px;

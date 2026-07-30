@@ -8,54 +8,62 @@
 </head>
 <body>
   <main>
-    <h1>Sudoku Helper</h1>
-    <p class="sub">Paste or drop a screenshot, fix any misreads, then get the simplest next step.</p>
+    <h1>Puzzle Helper</h1>
 
-    <div id="drop" class="drop">
-      <strong>Drop / paste a screenshot here</strong>, or
-      <label class="link">choose a file<input id="file" type="file" accept="image/*" hidden /></label>.
-      <div id="dropStatus" class="status"></div>
-    </div>
+    <div id="tabbar" class="tabbar" role="tablist"></div>
 
-    <div class="layout">
-      <div class="board-wrap">
-        <div id="board" class="board" tabindex="0"></div>
-        <div class="modes">
-          <button id="modePen" class="mode active" data-mode="pen">Pen</button>
-          <button id="modePencil" class="mode" data-mode="pencil">Pencil</button>
-          <span class="hintkeys">click a cell, type 1–9 · 0/⌫ clears</span>
+    <div id="panels" class="panels">
+      <div data-tab-panel="sudoku">
+        <p class="sub">Paste or drop a screenshot, fix any misreads, then get the simplest next step.</p>
+
+        <div id="drop" class="drop">
+          <strong>Drop / paste a screenshot here</strong>, or
+          <label class="link">choose a file<input id="file" type="file" accept="image/*" hidden /></label>.
+          <div id="dropStatus" class="status"></div>
         </div>
-        <div id="numpad" class="numpad">
-          <button class="num" data-digit="1">1</button>
-          <button class="num" data-digit="2">2</button>
-          <button class="num" data-digit="3">3</button>
-          <button class="num" data-digit="4">4</button>
-          <button class="num" data-digit="5">5</button>
-          <button class="num" data-digit="6">6</button>
-          <button class="num" data-digit="7">7</button>
-          <button class="num" data-digit="8">8</button>
-          <button class="num" data-digit="9">9</button>
-          <button id="numClear" class="num" aria-label="Clear cell">⌫</button>
-        </div>
-        <div class="actions">
-          <button id="getHint" class="primary">Get hint</button>
-          <button id="apply" disabled>Apply step</button>
-          <button id="confirmRead" disabled title="Teach the reader from your corrections">Confirm reading</button>
-          <button id="clear">Clear board</button>
+
+        <div class="layout">
+          <div class="board-wrap">
+            <div id="board" class="board" tabindex="0"></div>
+            <div class="modes">
+              <button id="modePen" class="mode active" data-mode="pen">Pen</button>
+              <button id="modePencil" class="mode" data-mode="pencil">Pencil</button>
+              <span class="hintkeys">click a cell, type 1–9 · 0/⌫ clears</span>
+            </div>
+            <div id="numpad" class="numpad">
+              <button class="num" data-digit="1">1</button>
+              <button class="num" data-digit="2">2</button>
+              <button class="num" data-digit="3">3</button>
+              <button class="num" data-digit="4">4</button>
+              <button class="num" data-digit="5">5</button>
+              <button class="num" data-digit="6">6</button>
+              <button class="num" data-digit="7">7</button>
+              <button class="num" data-digit="8">8</button>
+              <button class="num" data-digit="9">9</button>
+              <button id="numClear" class="num" aria-label="Clear cell">⌫</button>
+            </div>
+            <div class="actions">
+              <button id="getHint" class="primary">Get hint</button>
+              <button id="apply" disabled>Apply step</button>
+              <button id="confirmRead" disabled title="Teach the reader from your corrections">Confirm reading</button>
+              <button id="clear">Clear board</button>
+            </div>
+          </div>
+
+          <aside class="panel">
+            <h2>Hint</h2>
+            <div id="hint" class="hint empty">No hint yet.</div>
+            <div id="reveal" class="reveal" hidden>
+              <button data-level="1">Nudge</button>
+              <button data-level="2">Technique</button>
+              <button data-level="3">Full</button>
+            </div>
+          </aside>
         </div>
       </div>
-
-      <aside class="panel">
-        <h2>Hint</h2>
-        <div id="hint" class="hint empty">No hint yet.</div>
-        <div id="reveal" class="reveal" hidden>
-          <button data-level="1">Nudge</button>
-          <button data-level="2">Technique</button>
-          <button data-level="3">Full</button>
-        </div>
-      </aside>
     </div>
   </main>
-  <script src="/static/app.js"></script>
+  <script src="/static/shell.js"></script>
+  <script src="/static/sudoku.js"></script>
 </body>
 </html>
