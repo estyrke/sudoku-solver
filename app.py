@@ -22,6 +22,9 @@ from pydantic import BaseModel
 from sudoku.model import Board
 from sudoku.solver.hint import find_hint, solve
 
+from queens.model import Board as QueensBoard
+from queens.solver.hint import solve as queens_solve
+
 STATIC = Path(__file__).parent / "static"
 
 app = FastAPI(title="Sudoku Helper")
@@ -42,6 +45,22 @@ def _board_from_model(data: BoardModel) -> Board:
     if len(data.cells) != 81:
         raise HTTPException(400, "board must have 81 cells")
     return Board.from_dict({"cells": [c.model_dump() for c in data.cells]})
+
+
+class QueensCellModel(BaseModel):
+    state: str = "empty"
+    region: int | None = None
+
+
+class QueensBoardModel(BaseModel):
+    n: int
+    cells: list[QueensCellModel]
+
+
+def _queens_board_from_model(data: QueensBoardModel) -> QueensBoard:
+    if len(data.cells) != data.n * data.n:
+        raise HTTPException(400, f"board of size {data.n} must have {data.n * data.n} cells")
+    return QueensBoard.from_dict({"n": data.n, "cells": [c.model_dump() for c in data.cells]})
 
 
 def _nudge(hint) -> str:
@@ -130,6 +149,15 @@ async def confirm_endpoint(
     store = TemplateStore().load()
     added = learn_from_board(store, img, confirmed)
     return {"ok": True, "learned": added}
+
+
+@app.post("/queens/solve")
+def queens_solve_endpoint(data: QueensBoardModel) -> dict:
+    board = _queens_board_from_model(data)
+    solved = queens_solve(board)
+    if solved is None:
+        return {"ok": False, "reason": "No solution exists for this board."}
+    return {"ok": True, "board": solved.to_dict()}
 
 
 # Static assets (css/js) served under /static.

@@ -61,9 +61,36 @@
           </aside>
         </div>
       </div>
+
+      <div data-tab-panel="queens">
+        <p class="sub">Set the board size, paint regions with the palette, place marks/queens, then solve.</p>
+
+        <div class="qcontrols">
+          <label>Size N <input id="qSize" type="number" min="3" max="16" value="8" /></label>
+          <button id="qNew">New board</button>
+          <button id="qClear">Clear board</button>
+        </div>
+
+        <div id="qPalette" class="palette"></div>
+
+        <div class="layout">
+          <div class="board-wrap">
+            <div id="qBoard" class="qboard"></div>
+            <div class="actions">
+              <button id="qSolve" class="primary">Solve</button>
+            </div>
+          </div>
+
+          <aside class="panel">
+            <h2>Result</h2>
+            <div id="qResult" class="hint empty">No solve yet.</div>
+          </aside>
+        </div>
+      </div>
     </div>
   </main>
   <script src="/static/shell.js"></script>
   <script src="/static/sudoku.js"></script>
+  <script src="/static/queens.js"></script>
 </body>
 </html>
