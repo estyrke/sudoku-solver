@@ -1,0 +1,3 @@
+# The Queens reader has no self-calibrating template store
+
+Sudoku's reader ships seeded from rendered fonts and learns from every confirmed board (`/confirm` → `sudoku/reader/calibrate.py`), because digit fonts vary across the apps it might read. The Queens reader deliberately skips this: it targets Meowdoku only, which has exactly two fixed glyphs to recognize (the queen marker and the X) plus region colors that are consistent within an app and don't need learning (they're clustered per-board, unsupervised). If a second Queens-style app with different marker glyphs needs supporting later, revisit this — a calibration loop becomes worth its cost once there's font/glyph variation to adapt to.
