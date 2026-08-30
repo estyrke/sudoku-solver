@@ -20,10 +20,12 @@ sum, so pencil marks occupy roughly the lower two-thirds. See ``MARK_BAND``.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import cv2
 import numpy as np
 
-from ..model import Board, Cage, Cell
+from ..model import DIGITS, Board, Cage, Cell, sum_bounds
 from .calibrate import loaded_store
 from .cell_parse import parse_cell
 from .classify import TemplateStore, normalize_glyph
@@ -51,6 +53,8 @@ BORDER_SPAN = (0.22, 0.78)  # sample the middle of a side, clear of the corners
 BORDER_COVERAGE = 0.5  # fraction of the side that must be coloured
 
 SUM_CONF = 0.45  # NCC below this marks the sum as needing a look
+
+UNIT_TOTAL = sum(DIGITS)  # 45; a full partition's cage sums total 9 x 45
 
 
 def _warp_board(img_bgr: np.ndarray) -> np.ndarray:
@@ -203,12 +207,38 @@ def _read_sum(
     return int("".join(str(d) for d in digits)), worst
 
 
-def read_killer_board(img_bgr: np.ndarray) -> tuple[Board, list[tuple[int, int]]]:
-    """Read a screenshot into a caged board.
+@dataclass
+class KillerRead:
+    """What a screenshot yielded, plus what to be suspicious of.
 
-    Returns the board plus the anchor cells whose sums were read with low
-    confidence, so the UI can point the user at what to check.
+    Cage *structure* comes from the outlines and is reliable; the *sums* are OCR
+    from ~16px glyphs and are not. So the read reports where to look rather than
+    pretending to certainty.
     """
+
+    board: Board
+    unsure: list[tuple[int, int]]  # anchors whose sum needs a human glance
+    sum_total: int
+
+    @property
+    def checksum_ok(self) -> bool:
+        """Whether the cage sums total 45 per unit, as a full partition must.
+
+        Only meaningful on a fully-caged board. This detects a misread; it
+        deliberately doesn't try to *fix* one — many combinations reach 405, and
+        picking the cheapest rewrites sums that were already right.
+        """
+        return self.sum_total == UNIT_TOTAL * 9
+
+    @property
+    def needs_review(self) -> bool:
+        return bool(self.unsure) or (
+            self.board.is_fully_caged() and not self.checksum_ok
+        )
+
+
+def read_killer_board(img_bgr: np.ndarray) -> KillerRead:
+    """Read a screenshot into a caged board."""
     board_img = _warp_board(img_bgr)
     coloured = _ink_colour(board_img)
     labels = _label_cages(coloured)
@@ -237,19 +267,19 @@ def read_killer_board(img_bgr: np.ndarray) -> tuple[Board, list[tuple[int, int]]
             continue  # a lone cell means the outline was misread; drop it rather than guess
         anchor = min(coords)
         total, score = _read_sum(coloured, *anchor, sums)
-        if total is None:
+        low, high = sum_bounds(len(coords))
+        if total is None or not low <= total <= high:
+            # The outline is trustworthy even when the sum isn't, so keep the cage
+            # and clamp to something legal rather than discarding real structure.
+            # It's flagged either way, and the user retypes the number.
+            total = min(high, max(low, total or low))
             unsure.append(anchor)
-            continue
-        try:
-            cages.append(Cage.of(coords, total))
-        except ValueError:
-            unsure.append(anchor)  # sum out of range for the cage's size
-            continue
-        if score < SUM_CONF:
+        elif score < SUM_CONF:
             unsure.append(anchor)
+        cages.append(Cage.of(coords, total))
 
-    return Board(cells, cages), unsure
+    return KillerRead(Board(cells, cages), unsure, sum(c.sum for c in cages))
 
 
-def read_killer_board_from_bytes(raw: bytes) -> tuple[Board, list[tuple[int, int]]]:
+def read_killer_board_from_bytes(raw: bytes) -> KillerRead:
     return read_killer_board(decode_image(raw))

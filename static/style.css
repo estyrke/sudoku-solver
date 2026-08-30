@@ -249,3 +249,4 @@ button:disabled { opacity: .5; cursor: default; }
 
 #kStatus.error { color: #c62828; }
 .kcell.cage-unsure { background: #fff3cd; box-shadow: inset 0 0 0 2px #e0a800; }
+#kDropStatus.error { color: #c62828; }

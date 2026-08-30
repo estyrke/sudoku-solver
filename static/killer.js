@@ -375,7 +375,16 @@
         notes.push("Some cells aren't in a cage — check the outlines.");
       if (unsure.size)
         notes.push(`${unsure.size} cage sum(s) look doubtful (highlighted).`);
+      // Cage sums must total 45 per unit. A mismatch means a sum was misread even
+      // when every individual read looked confident.
+      if (data.fully_caged && !data.checksum_ok) {
+        notes.push(
+          `Cage sums total ${data.sum_total}, but a full board must total 405 — ` +
+            `at least one sum is wrong.`
+        );
+      }
       statusEl.textContent = notes.join(" ");
+      statusEl.classList.toggle("error", !!data.needs_review);
       setStatus(
         unsure.size
           ? "Click a highlighted cage to correct its sum."

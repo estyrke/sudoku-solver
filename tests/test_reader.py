@@ -105,7 +105,7 @@ def test_positional_marks_maps_onto_a_shifted_band():
     assert _positional_marks(ink) == {4}  # the bug the band parameter fixes
 
 
-def _killer_fixture_board():
+def _killer_fixture_read():
     img = cv2.imread(str(FIXTURE))
     assert img is not None, "fixture screenshot missing"
     return read_killer_board(img)
@@ -114,18 +114,21 @@ def _killer_fixture_board():
 def test_killer_reader_recovers_the_cage_layout():
     """The reference board has 29 cages tiling all 81 cells. Cage structure comes
     from the coloured outlines, so this is the part that must be exact."""
-    board, _ = _killer_fixture_board()
+    board = _killer_fixture_read().board
     covered = sum(len(cage.cells) for cage in board.cages)
     # one cage may be dropped when its sum reads illegally; allow a single miss
-    assert len(board.cages) >= 28, f"only {len(board.cages)} cages"
-    assert covered >= 79, f"only {covered}/81 cells covered"
+    # a doubtful sum no longer discards the cage, so structure should be complete
+    assert len(board.cages) == 29, f"got {len(board.cages)} cages"
+    assert covered == 81, f"only {covered}/81 cells covered"
+    assert board.is_fully_caged()
     assert all(2 <= len(cage.cells) <= 9 for cage in board.cages)
 
 
 def test_killer_reader_recovers_cage_sums():
     """Sums are OCR'd from small glyphs, so allow a couple of misreads — the ones
     it is unsure about are reported for the user to fix."""
-    board, unsure = _killer_fixture_board()
+    read = _killer_fixture_read()
+    board, unsure = read.board, read.unsure
     expected = {
         (0, 0): 15, (0, 3): 15, (0, 6): 26, (0, 7): 10, (0, 8): 5, (1, 0): 15,
         (1, 2): 11, (2, 0): 19, (2, 2): 8, (2, 4): 18, (2, 6): 8, (2, 8): 14,
@@ -141,13 +144,13 @@ def test_killer_reader_recovers_cage_sums():
 def test_killer_reader_reads_pencil_marks_not_the_cage_sum():
     """r1c1 shows a 15-cage sum above marks 1,2,3,5,6,7,8. The sum must not leak
     into the marks, and the marks must not come out shifted."""
-    board, _ = _killer_fixture_board()
+    board = _killer_fixture_read().board
     marks = board.cell(0, 0).pencil_marks
     assert marks == {1, 2, 3, 5, 6, 7, 8}, marks
 
 
 def test_killer_reader_reads_placed_digits():
-    board, _ = _killer_fixture_board()
+    board = _killer_fixture_read().board
     placed = [(r, c) for r in range(9) for c in range(9) if board.value(r, c) is not None]
     assert len(placed) >= 12, f"only {len(placed)} placed digits found"
     # Killer boards start empty, so nothing is a given.
@@ -157,16 +160,47 @@ def test_killer_reader_reads_placed_digits():
 def test_killer_reader_flags_what_it_is_unsure_about():
     """A sum that reads illegally for its cage size is reported, not silently
     accepted — the UI highlights these for correction."""
-    board, unsure = _killer_fixture_board()
+    read = _killer_fixture_read()
+    board, unsure = read.board, read.unsure
     assert isinstance(unsure, list)
     # every flagged anchor must be a real cell coordinate
     assert all(0 <= r < 9 and 0 <= c < 9 for r, c in unsure)
 
 
 def test_killer_reader_produces_a_usable_board():
-    board, _ = _killer_fixture_board()
+    board = _killer_fixture_read().board
     assert isinstance(board, Board)
     assert len(board.cells) == 81
     # cages returned are legal by construction (Cage validates on build)
     for cage in board.cages:
         assert len(cage.cells) >= 2
+
+
+def test_killer_reader_checksum_detects_a_misread_sum():
+    """A full partition's cage sums must total 9x45. The reference board has one
+    sum the OCR gets wrong, so the checksum must notice — this is a detector, not
+    a corrector, and never rewrites a value."""
+    read = _killer_fixture_read()
+    assert read.board.is_fully_caged()
+    assert read.sum_total != 405, "fixture is expected to contain a misread sum"
+    assert not read.checksum_ok
+    assert read.needs_review
+
+
+def test_killer_checksum_passes_on_a_correct_board():
+    """Sanity-check the checksum itself: cages built from a real solution total 405."""
+    from sudoku.model import Board as B, Cage
+    from sudoku.reader.killer import KillerRead
+
+    solved = B.from_string(
+        "534678912672195348198342567859761423426853791713924856961537284287419635345286179"
+    )
+    spans = [(0, 2), (2, 4), (4, 6), (6, 9)]
+    cages = [
+        Cage.of([(r, c) for c in range(a, b)], sum(solved.value(r, c) for c in range(a, b)))
+        for r in range(9) for a, b in spans
+    ]
+    read = KillerRead(B(cages=cages), [], sum(c.sum for c in cages))
+    assert read.sum_total == 405
+    assert read.checksum_ok
+    assert not read.needs_review

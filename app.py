@@ -297,12 +297,15 @@ async def killer_parse_endpoint(image: UploadFile = File(...)) -> dict:
         )
     raw = await image.read()
     try:
-        board, unsure = read_killer_board_from_bytes(raw)
+        read = read_killer_board_from_bytes(raw)
     except Exception as exc:
         raise HTTPException(422, f"Could not read a Killer board from that image: {exc}")
     return {
         "ok": True,
-        "board": board.to_dict(),
-        "unsure": [{"r": r, "c": c} for r, c in unsure],
-        "fully_caged": board.is_fully_caged(),
+        "board": read.board.to_dict(),
+        "unsure": [{"r": r, "c": c} for r, c in read.unsure],
+        "fully_caged": read.board.is_fully_caged(),
+        "sum_total": read.sum_total,
+        "checksum_ok": read.checksum_ok,
+        "needs_review": read.needs_review,
     }
