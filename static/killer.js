@@ -24,6 +24,7 @@
   let selected = null; // {r, c} in digits mode
   let selectedCage = null; // index into `cages` in cages mode
   let dragging = null; // Set of "r,c" keys while dragging
+  let unsure = new Set(); // anchors whose sum the reader flagged as doubtful
 
   function blankCells() {
     return Array.from({ length: N * N }, () => ({ value: null, marks: [] }));
@@ -34,6 +35,7 @@
     cages = [];
     selected = null;
     selectedCage = null;
+    unsure = new Set();
   }
 
   // ---- cage helpers ------------------------------------------------------
@@ -135,6 +137,7 @@
       if (ci === selectedCage) el.classList.add("cage-selected");
 
       const [ar, ac] = cageAnchor(cage);
+      if (unsure.has(key(ar, ac))) el.classList.add("cage-unsure");
       if (ar === r && ac === c) {
         const tag = document.createElement("span");
         tag.className = "cage-sum";
@@ -341,6 +344,74 @@
     }
   }
 
+  // ---- screenshot import -------------------------------------------------
+
+  async function importImage(file, statusEl) {
+    if (!file) return;
+    statusEl.textContent = "Reading…";
+    const body = new FormData();
+    body.append("image", file);
+    try {
+      const res = await fetch("/killer/parse", { method: "POST", body });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        statusEl.textContent = data.detail || `Could not read that image (${res.status}).`;
+        return;
+      }
+      cages = (data.board.cages || []).map((cage) => ({
+        cells: cage.cells.map((cell) => [cell.r, cell.c]),
+        sum: cage.sum,
+      }));
+      cells = data.board.cells.map((cell) => ({
+        value: cell.value,
+        marks: cell.pencil_marks || [],
+      }));
+      unsure = new Set((data.unsure || []).map((u) => key(u.r, u.c)));
+      selected = null;
+      selectedCage = null;
+
+      const notes = [`Read ${cages.length} cages.`];
+      if (!data.fully_caged)
+        notes.push("Some cells aren't in a cage — check the outlines.");
+      if (unsure.size)
+        notes.push(`${unsure.size} cage sum(s) look doubtful (highlighted).`);
+      statusEl.textContent = notes.join(" ");
+      setStatus(
+        unsure.size
+          ? "Click a highlighted cage to correct its sum."
+          : "Board read. Check it over, then solve."
+      );
+      render();
+    } catch (err) {
+      statusEl.textContent = err.message;
+    }
+  }
+
+  function wireImport(panel) {
+    const drop = panel.querySelector("#kDrop");
+    const status = panel.querySelector("#kDropStatus");
+    const file = panel.querySelector("#kFile");
+
+    file.addEventListener("change", () => importImage(file.files[0], status));
+    drop.addEventListener("dragover", (ev) => {
+      ev.preventDefault();
+      drop.classList.add("over");
+    });
+    drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+    drop.addEventListener("drop", (ev) => {
+      ev.preventDefault();
+      drop.classList.remove("over");
+      importImage(ev.dataTransfer.files[0], status);
+    });
+    document.addEventListener("paste", (ev) => {
+      if (panel.hidden) return;
+      const item = [...(ev.clipboardData?.items || [])].find((i) =>
+        i.type.startsWith("image/")
+      );
+      if (item) importImage(item.getAsFile(), status);
+    });
+  }
+
   // ---- wiring ------------------------------------------------------------
 
   function mount(panel) {
@@ -410,6 +481,7 @@
         return;
       }
       cage.sum = total;
+      unsure.delete(key(...cageAnchor(cage)));
       setStatus(`Cage sum updated to ${total}.`);
       render();
     });
@@ -422,6 +494,7 @@
       render();
     });
 
+    wireImport(panel);
     panel.querySelector("#kSolve").addEventListener("click", doSolve);
     panel.querySelector("#kGetHint").addEventListener("click", doHint);
     panel.querySelector("#kClear").addEventListener("click", () => {

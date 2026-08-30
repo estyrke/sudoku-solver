@@ -279,3 +279,30 @@ def killer_hint_endpoint(data: KillerBoardModel) -> dict:
         "technique": hint.technique,
         "hint": hint.to_dict(),
     }
+
+
+@app.post("/killer/parse")
+async def killer_parse_endpoint(image: UploadFile = File(...)) -> dict:
+    """Read a Killer board from a Puzzle Page screenshot.
+
+    ``unsure`` lists the cells whose cage sum was read doubtfully (or dropped as
+    illegal), so the UI can point the user at what to check before solving.
+    """
+    try:
+        from sudoku.reader.killer import read_killer_board_from_bytes
+    except Exception as exc:  # pragma: no cover - depends on optional deps
+        raise HTTPException(
+            501,
+            f"Image reading isn't available: {exc}. Install OpenCV (see requirements.txt).",
+        )
+    raw = await image.read()
+    try:
+        board, unsure = read_killer_board_from_bytes(raw)
+    except Exception as exc:
+        raise HTTPException(422, f"Could not read a Killer board from that image: {exc}")
+    return {
+        "ok": True,
+        "board": board.to_dict(),
+        "unsure": [{"r": r, "c": c} for r, c in unsure],
+        "fully_caged": board.is_fully_caged(),
+    }

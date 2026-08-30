@@ -97,7 +97,13 @@
         </div>
       </div>
       <div data-tab-panel="killer">
-        <p class="sub">Drag out the cages and give each one its sum, then fill in digits or solve.</p>
+        <p class="sub">Drop a screenshot, or drag out the cages and give each one its sum, then fill in digits or solve.</p>
+
+        <div id="kDrop" class="drop">
+          <strong>Drop / paste a Killer screenshot here</strong>, or
+          <label class="link">choose a file<input id="kFile" type="file" accept="image/*" hidden /></label>.
+          <div id="kDropStatus" class="status"></div>
+        </div>
 
         <div class="kcontrols">
           <button class="mode active" data-kmode="cages">Cages</button>

@@ -94,7 +94,11 @@ def _is_given(cell_bgr: np.ndarray, ink: np.ndarray) -> bool:
     return mean_sat <= SAT_GIVEN_MAX
 
 
-def parse_cell(cell_bgr: np.ndarray, store: TemplateStore) -> CellRead:
+def parse_cell(
+    cell_bgr: np.ndarray,
+    store: TemplateStore,
+    mark_band: tuple[float, float] = (0.0, 1.0),
+) -> CellRead:
     ink = cell_ink(cell_bgr)
     comps = _components(ink)
     if not comps:
@@ -115,7 +119,7 @@ def parse_cell(cell_bgr: np.ndarray, store: TemplateStore) -> CellRead:
         )
 
     # No large glyph — read pencil marks positionally.
-    marks = _positional_marks(ink)
+    marks = _positional_marks(ink, mark_band)
     return CellRead(pencil_marks=marks, low_confidence=False)
 
 
@@ -123,19 +127,30 @@ def parse_cell(cell_bgr: np.ndarray, store: TemplateStore) -> CellRead:
 _MARK_INK_THRESH = 0.04
 
 
-def _positional_marks(ink: np.ndarray) -> set[int]:
+def _positional_marks(
+    ink: np.ndarray, band: tuple[float, float] = (0.0, 1.0)
+) -> set[int]:
     """Detect candidates by position in a 3×3 sub-grid overlay.
 
     Digit d occupies sub-cell ((d-1)//3, (d-1)%3): top-left=1 … bottom-right=9.
     We count ink pixels in each sub-cell and threshold by fraction of its area.
+
+    ``band`` is the vertical slice of ``ink`` the mark grid actually occupies, as
+    (top, bottom) fractions. It defaults to the whole image, which is what apps
+    that centre their marks in the cell need. Killer boards reserve a strip at the
+    top of every cell for the cage sum and push the marks down below it, so the
+    grid has to be mapped onto that strip alone — splitting the full height into
+    thirds there would report every mark one row too low.
     """
     h, w = ink.shape
+    top, bottom = band
+    y_start, y_span = top * h, (bottom - top) * h
     marks: set[int] = set()
-    sub_h, sub_w = h / 3, w / 3
+    sub_h, sub_w = y_span / 3, w / 3
     for sub_r in range(3):
         for sub_c in range(3):
-            y0 = int(round(sub_r * sub_h))
-            y1 = int(round((sub_r + 1) * sub_h))
+            y0 = int(round(y_start + sub_r * sub_h))
+            y1 = int(round(y_start + (sub_r + 1) * sub_h))
             x0 = int(round(sub_c * sub_w))
             x1 = int(round((sub_c + 1) * sub_w))
             patch = ink[y0:y1, x0:x1]
