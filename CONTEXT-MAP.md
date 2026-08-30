@@ -2,7 +2,7 @@
 
 ## Contexts
 
-- [Sudoku](./sudoku/CONTEXT.md) — classic 9x9 digit Sudoku: reading, hinting, solving
+- [Sudoku](./sudoku/CONTEXT.md) — classic 9x9 digit Sudoku, and its Killer variant: reading, hinting, solving
 - [Queens](./queens/CONTEXT.md) — the Queens/Meowdoku family of puzzles: one marker per row, column and colored region, no two adjacent
 
 ## Relationships
