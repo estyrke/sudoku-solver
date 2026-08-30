@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from itertools import combinations
 from typing import Optional
 
-from ..model import Board, box_index, cell_name
+from ..model import DIGITS, Board, Cage, box_index, cell_name
 
 Coord = tuple[int, int]
 CandGrid = dict[Coord, set[int]]
@@ -319,9 +319,133 @@ def x_wing(board: Board, cg: CandGrid) -> Optional[Hint]:
 
 
 # Ordered simplest -> hardest. find_hint() walks this list and returns the first hit.
+# ---------------------------------------------------------------------------
+# Killer Sudoku: cage sums
+# ---------------------------------------------------------------------------
+
+
+def _cage_label(cage: Cage) -> str:
+    """``the 15-cage at r1c1`` — anchored on the topmost-then-leftmost cell,
+    the same one the UI prints the sum in."""
+    return f"the {cage.sum}-cage at {cell_name(*min(cage.cells))}"
+
+
+def _deals_out(digits: tuple[int, ...], cells: list[Coord], cg: CandGrid) -> bool:
+    """Whether ``digits`` can be dealt one-each to ``cells`` respecting candidates.
+
+    A combination can total correctly yet still be impossible — e.g. {1,3} is no
+    use if both cells have already lost the 3. Matching cells to digits rules
+    that out, keeping eliminations sound.
+    """
+    owner: dict[int, Coord] = {}  # index into digits -> cell holding it
+
+    def place(cell: Coord, tried: set[int]) -> bool:
+        for i, d in enumerate(digits):
+            if i in tried or d not in cg[cell]:
+                continue
+            tried.add(i)
+            if i not in owner or place(owner[i], tried):
+                owner[i] = cell
+                return True
+        return False
+
+    return all(place(cell, set()) for cell in cells)
+
+
+def _cage_options(board: Board, cg: CandGrid, cage: Cage):
+    """For one cage: its empty cells, the digits actually placeable in each, and
+    the combinations considered. ``None`` when the cage has nothing to say."""
+    empties = [cell for cell in sorted(cage.cells) if cell in cg]
+    if not empties:
+        return None
+    filled = [board.value(r, c) for r, c in cage.cells if board.value(r, c) is not None]
+    remaining = cage.sum - sum(filled)
+    pool = sorted(set(DIGITS) - set(filled))
+
+    combos: list[tuple[int, ...]] = []
+    allowed: dict[Coord, set[int]] = {cell: set() for cell in empties}
+    for combo in combinations(pool, len(empties)):
+        if sum(combo) != remaining or not _deals_out(combo, empties, cg):
+            continue
+        combos.append(combo)
+        for cell in empties:
+            others = [x for x in empties if x != cell]
+            for d in combo:
+                if d in cg[cell] and d not in allowed[cell]:
+                    rest = list(combo)
+                    rest.remove(d)
+                    if _deals_out(tuple(rest), others, cg):
+                        allowed[cell].add(d)
+    if not combos:
+        return None  # cage is unsatisfiable; that's is_valid's business, not a hint
+    return empties, allowed, combos, remaining
+
+
+def _combo_list(combos: list[tuple[int, ...]], limit: int = 6) -> str:
+    shown = ", ".join("{" + "".join(str(d) for d in combo) + "}" for combo in combos[:limit])
+    return shown + (f" and {len(combos) - limit} more" if len(combos) > limit else "")
+
+
+def cage_sum(board: Board, cg: CandGrid) -> Optional[Hint]:
+    """Restrict a cage's candidates to digit sets that can reach its sum.
+
+    Purely about sum reachability — a cage's no-repeat rule is already handled
+    by cage-mates being peers, so it never has to be re-derived here.
+    """
+    if not board.cages:
+        return None
+    analysed = []
+    for cage in board.cages:
+        options = _cage_options(board, cg, cage)
+        if options is not None:
+            analysed.append((cage, *options))
+
+    # A cell only one digit can occupy is the stronger deduction, so look first.
+    for cage, empties, allowed, combos, remaining in analysed:
+        for cell in empties:
+            if len(allowed[cell]) == 1 and len(cg[cell]) > 1:
+                d = next(iter(allowed[cell]))
+                return Hint(
+                    technique="Cage sum",
+                    level=3,
+                    action="place",
+                    cells=[cell],
+                    digits=[d],
+                    units=[_cage_label(cage)],
+                    explanation=(
+                        f"{_cage_label(cage)} needs {remaining} more across "
+                        f"{len(empties)} cells. The only workable sets are "
+                        f"{_combo_list(combos)}, and every one of them puts {d} "
+                        f"in {cell_name(*cell)}."
+                    ),
+                )
+
+    for cage, empties, allowed, combos, remaining in analysed:
+        for cell in empties:
+            gone = sorted(cg[cell] - allowed[cell])
+            if gone and allowed[cell]:
+                return Hint(
+                    technique="Cage sum",
+                    level=3,
+                    action="eliminate",
+                    cells=[cell],
+                    digits=gone,
+                    units=[_cage_label(cage)],
+                    explanation=(
+                        f"{_cage_label(cage)} needs {remaining} more across "
+                        f"{len(empties)} cells. The only workable sets are "
+                        f"{_combo_list(combos)}, so "
+                        f"{', '.join(str(d) for d in gone)} cannot go in "
+                        f"{cell_name(*cell)}."
+                    ),
+                )
+    return None
+
+
 TECHNIQUES = [
     naked_single,
     hidden_single,
+    cage_sum,
     naked_pair,
     naked_triple,
     hidden_pair,
