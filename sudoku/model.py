@@ -10,10 +10,13 @@ Coordinates are 0-indexed ``(row, col)`` throughout. Human-facing labels (``r1c1
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from itertools import combinations
 from typing import Iterable, Iterator, Optional
 
 DIGITS = tuple(range(1, 10))
 COORDS = [(r, c) for r in range(9) for c in range(9)]
+
+Coord = tuple[int, int]
 
 
 @dataclass
@@ -42,15 +45,117 @@ def cell_name(r: int, c: int) -> str:
     return f"r{r + 1}c{c + 1}"
 
 
+def sum_bounds(size: int) -> tuple[int, int]:
+    """Smallest and largest totals reachable by ``size`` distinct digits 1-9."""
+    return size * (size + 1) // 2, sum(range(10 - size, 10))
+
+
+def can_reach(size: int, total: int, allowed: frozenset[int]) -> bool:
+    """Whether ``size`` distinct digits drawn from ``allowed`` can total ``total``.
+
+    Pure arithmetic reachability — it says nothing about whether those digits can
+    legally be placed given the rest of the board.
+    """
+    if size == 0:
+        return total == 0
+    if size > len(allowed):
+        return False
+    return any(sum(combo) == total for combo in combinations(sorted(allowed), size))
+
+
+def _is_contiguous(cells: frozenset[Coord]) -> bool:
+    """True if ``cells`` form one orthogonally-connected group (no diagonals)."""
+    start = next(iter(cells))
+    seen, stack = {start}, [start]
+    while stack:
+        r, c = stack.pop()
+        for nxt in ((r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)):
+            if nxt in cells and nxt not in seen:
+                seen.add(nxt)
+                stack.append(nxt)
+    return len(seen) == len(cells)
+
+
+@dataclass(frozen=True)
+class Cage:
+    """A Killer cage: 2+ orthogonally-contiguous cells whose digits are distinct
+    and total ``sum``.
+
+    Not a Unit — a cage need not contain every digit 1-9. See ``sudoku/CONTEXT.md``.
+    """
+
+    cells: frozenset[Coord]
+    sum: int
+
+    def __post_init__(self) -> None:
+        if len(self.cells) < 2:
+            raise ValueError("a cage needs at least 2 cells")
+        if len(self.cells) > 9:
+            raise ValueError("a cage cannot exceed 9 cells (digits must differ)")
+        if any(not (0 <= r < 9 and 0 <= c < 9) for r, c in self.cells):
+            raise ValueError("cage cells must be on the board")
+        if not _is_contiguous(self.cells):
+            raise ValueError("a cage's cells must be orthogonally contiguous")
+        lo, hi = sum_bounds(len(self.cells))
+        if not lo <= self.sum <= hi:
+            raise ValueError(
+                f"a {len(self.cells)}-cell cage must total {lo}..{hi}, got {self.sum}"
+            )
+
+    @classmethod
+    def of(cls, cells: Iterable[Coord], total: int) -> "Cage":
+        """Build from any iterable of coordinates."""
+        return cls(frozenset(cells), total)
+
+
 class Board:
     """A 9x9 Sudoku grid plus the structural helpers techniques rely on."""
 
-    def __init__(self, cells: Optional[list[Cell]] = None):
+    def __init__(
+        self,
+        cells: Optional[list[Cell]] = None,
+        cages: Optional[Iterable[Cage]] = None,
+    ):
         if cells is None:
             cells = [Cell() for _ in COORDS]
         if len(cells) != 81:
             raise ValueError("a board needs exactly 81 cells")
         self.cells: list[Cell] = cells
+        self.cages: list[Cage] = list(cages or [])
+        self._cage_of: dict[Coord, Cage] = {}
+        for cage in self.cages:
+            for coord in cage.cells:
+                if coord in self._cage_of:
+                    raise ValueError(f"{cell_name(*coord)} is in more than one cage")
+                self._cage_of[coord] = cage
+
+    # ---- cages --------------------------------------------------------------
+
+    def cage_at(self, r: int, c: int) -> Optional[Cage]:
+        """The cage containing ``(r, c)``, or ``None`` on an uncaged cell."""
+        return self._cage_of.get((r, c))
+
+    def is_fully_caged(self) -> bool:
+        """Whether every cell belongs to a cage — true of a complete Killer board.
+
+        Not an invariant: a board is legitimately part-caged while being entered.
+        """
+        return len(self._cage_of) == 81
+
+    def cage_is_feasible(self, cage: Cage) -> bool:
+        """Whether ``cage`` can still be completed: no repeated digit, no overshoot,
+        and a remainder its empty cells could actually total."""
+        placed = [self.value(r, c) for r, c in cage.cells]
+        filled = [v for v in placed if v is not None]
+        if len(set(filled)) != len(filled):
+            return False
+        so_far = sum(filled)
+        empty = len(placed) - len(filled)
+        if empty == 0:
+            return so_far == cage.sum
+        if so_far >= cage.sum:
+            return False
+        return can_reach(empty, cage.sum - so_far, frozenset(DIGITS) - set(filled))
 
     # ---- access -------------------------------------------------------------
 
@@ -98,6 +203,9 @@ class Board:
         result.update(self.row_cells(r))
         result.update(self.col_cells(c))
         result.update(self.box_cells(box_index(r, c)))
+        cage = self.cage_at(r, c)
+        if cage is not None:
+            result.update(cage.cells)
         result.discard((r, c))
         return result
 
@@ -128,7 +236,7 @@ class Board:
         return all(self.value(r, c) is not None for r, c in COORDS) and self.is_valid()
 
     def is_valid(self) -> bool:
-        """No unit contains a repeated value."""
+        """No unit repeats a value, and every cage is still completable."""
         for _, cells in self.units():
             seen: set[int] = set()
             for r, c in cells:
@@ -138,7 +246,7 @@ class Board:
                 if v in seen:
                     return False
                 seen.add(v)
-        return True
+        return all(self.cage_is_feasible(cage) for cage in self.cages)
 
     def is_broken(self) -> bool:
         """True if invalid, or an empty cell has no candidates (dead end)."""
@@ -178,7 +286,7 @@ class Board:
         return cls.from_grid(rows)
 
     def to_dict(self) -> dict:
-        return {
+        data: dict = {
             "cells": [
                 {
                     "value": cell.value,
@@ -189,6 +297,15 @@ class Board:
                 for cell in self.cells
             ]
         }
+        if self.cages:
+            data["cages"] = [
+                {
+                    "cells": [{"r": r, "c": c} for r, c in sorted(cage.cells)],
+                    "sum": cage.sum,
+                }
+                for cage in self.cages
+            ]
+        return data
 
     @classmethod
     def from_dict(cls, data: dict) -> "Board":
@@ -201,4 +318,8 @@ class Board:
             )
             for c in data["cells"]
         ]
-        return cls(cells)
+        cages = [
+            Cage.of(((cell["r"], cell["c"]) for cell in cage["cells"]), cage["sum"])
+            for cage in data.get("cages", [])
+        ]
+        return cls(cells, cages)

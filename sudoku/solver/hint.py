@@ -128,9 +128,14 @@ def _backtrack(board: Board) -> bool:
     if best is None:
         return True
     r, c = best
+    cage = board.cage_at(r, c)
     for d in best_cands:
         board.set_value(r, c, d)
-        if _backtrack(board):
-            return True
+        # Cage sums aren't expressible as per-cell candidates, so they can't be
+        # pruned above — without this check a classic-valid but sum-invalid grid
+        # would be returned as a solution.
+        if cage is None or board.cage_is_feasible(cage):
+            if _backtrack(board):
+                return True
         board.set_value(r, c, None)
     return False

@@ -1,4 +1,4 @@
-from sudoku.model import COORDS, Board
+from sudoku.model import COORDS, Board, Cage
 from sudoku.solver import techniques as T
 from sudoku.solver.hint import find_hint, solve, solve_with_techniques
 
@@ -125,3 +125,67 @@ def test_hint_pipeline_is_consistent_with_solution():
 def test_find_hint_on_solved_board_is_none():
     board = Board.from_string(SOLUTION)
     assert find_hint(board) is None
+
+
+# ---------------------------------------------------------------------------
+# Killer Sudoku: cage-aware solving
+# ---------------------------------------------------------------------------
+
+PUZZLE = ("530070000600195000098000060800060003400803001700020006"
+          "060000280000419005000080079")
+
+# The unique solution to PUZZLE, used to build cages that are consistent with it.
+KILLER_SOLUTION = [
+    [5, 3, 4, 6, 7, 8, 9, 1, 2],
+    [6, 7, 2, 1, 9, 5, 3, 4, 8],
+    [1, 9, 8, 3, 4, 2, 5, 6, 7],
+    [8, 5, 9, 7, 6, 1, 4, 2, 3],
+    [4, 2, 6, 8, 5, 3, 7, 9, 1],
+    [7, 1, 3, 9, 2, 4, 8, 5, 6],
+    [9, 6, 1, 5, 3, 7, 2, 8, 4],
+    [2, 8, 7, 4, 1, 9, 6, 3, 5],
+    [3, 4, 5, 2, 8, 6, 1, 7, 9],
+]
+
+_SPANS = [(0, 2), (2, 4), (4, 6), (6, 9)]
+
+
+def _cages_from(grid):
+    """Tile each row with contiguous runs of 2,2,2,3 cells — a full 81-cell
+    partition whose cages are legal by construction (same-row digits differ)."""
+    return [
+        Cage.of([(r, c) for c in range(a, b)], sum(grid[r][c] for c in range(a, b)))
+        for r in range(9)
+        for a, b in _SPANS
+    ]
+
+
+def test_solve_satisfies_every_cage_sum():
+    board = Board(cages=_cages_from(KILLER_SOLUTION))
+    solved = solve(board)
+    assert solved is not None
+    assert solved.is_solved()
+    for cage in solved.cages:
+        assert sum(solved.value(r, c) for r, c in cage.cells) == cage.sum
+
+
+def test_solve_rejects_a_classic_valid_but_sum_invalid_board():
+    """PUZZLE has a unique classic solution in which r1c1+r1c2 = 5+3 = 8.
+
+    Pinning that pair to any other total leaves the board classically solvable
+    but with no cage-satisfying solution, so solve() must return None. Without
+    cage-sum pruning in the backtracker it would return the classic solution.
+    """
+    classic = solve(Board.from_string(PUZZLE))
+    assert classic.value(0, 0) + classic.value(0, 1) == 8
+
+    contradictory = Board(Board.from_string(PUZZLE).cells, [Cage.of([(0, 0), (0, 1)], 9)])
+    assert solve(contradictory) is None
+
+
+def test_cage_consistent_sum_still_solves():
+    board = Board.from_string(PUZZLE)
+    board = Board(board.cells, [Cage.of([(0, 0), (0, 1)], 8)])
+    solved = solve(board)
+    assert solved is not None and solved.is_solved()
+    assert solved.value(0, 0) + solved.value(0, 1) == 8
