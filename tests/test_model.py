@@ -10,7 +10,7 @@ def test_box_index_and_name():
 
 
 def test_peers_count():
-    peers = Board.peers(4, 4)
+    peers = Board().peers(4, 4)
     assert len(peers) == 20
     assert (4, 4) not in peers
     assert (4, 0) in peers and (0, 4) in peers and (3, 3) in peers

@@ -87,13 +87,17 @@ class Board:
         for b in range(9):
             yield f"box {b + 1}", self.box_cells(b)
 
-    @staticmethod
-    def peers(r: int, c: int) -> set[tuple[int, int]]:
-        """The 20 cells that share a row, column or box with ``(r, c)``."""
+    def peers(self, r: int, c: int) -> set[tuple[int, int]]:
+        """The cells whose values constrain ``(r, c)``.
+
+        The classic 20 that share a row, column or box. An instance method rather
+        than a static one because a Killer board's cages add to this set, and cage
+        membership is per-board data — see ``sudoku/CONTEXT.md``, *Peer*.
+        """
         result: set[tuple[int, int]] = set()
-        result.update(Board.row_cells(r))
-        result.update(Board.col_cells(c))
-        result.update(Board.box_cells(box_index(r, c)))
+        result.update(self.row_cells(r))
+        result.update(self.col_cells(c))
+        result.update(self.box_cells(box_index(r, c)))
         result.discard((r, c))
         return result
 

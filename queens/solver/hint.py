@@ -56,11 +56,10 @@ def find_hint(board: Board, cg: Optional[CandGrid] = None) -> Optional[Hint]:
 def apply_to_candidates(board: Board, cg: CandGrid, hint: Hint) -> CandGrid:
     """Apply a hint to a candidate grid in place and return it.
 
-    Takes ``board`` in addition to ``(cg, hint)`` — unlike Sudoku's
-    ``apply_to_candidates(cg, hint)`` — because a cell's peers/neighbors
-    depend on board size and region layout here, which are instance data
-    (``Board.n``, per-cell ``region``) rather than a fixed 9x9 layout ``sudoku``
-    can compute from coordinates alone.
+    Takes ``board`` in addition to ``(cg, hint)`` because a cell's peers/neighbors
+    depend on board size and region layout, which are instance data (``Board.n``,
+    per-cell ``region``). Sudoku's counterpart takes a board for the same reason —
+    its peers became board-dependent once Killer cages entered the model.
 
     A placement drops the placed cell from ``cg`` and propagates elimination
     to its peers and neighbors, exactly like ``working_candidates`` does for

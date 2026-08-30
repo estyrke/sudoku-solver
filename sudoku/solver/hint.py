@@ -46,17 +46,20 @@ def find_hint(board: Board, cg: Optional[CandGrid] = None) -> Optional[Hint]:
     return None
 
 
-def apply_to_candidates(cg: CandGrid, hint: Hint) -> CandGrid:
+def apply_to_candidates(board: Board, cg: CandGrid, hint: Hint) -> CandGrid:
     """Apply a hint to a candidate grid in place and return it.
 
     A placement removes the cell from the grid and clears that digit from peers; an
     elimination drops the listed digits from the named cells.
+
+    Takes ``board`` because a cell's peers are board data once cages are in play,
+    not something derivable from coordinates alone (see ``Board.peers``).
     """
     if hint.action == "place":
         (r, c) = hint.cells[0]
         d = hint.digits[0]
         cg.pop((r, c), None)
-        for pr, pc in Board.peers(r, c):
+        for pr, pc in board.peers(r, c):
             if (pr, pc) in cg:
                 cg[(pr, pc)].discard(d)
     else:
@@ -96,7 +99,7 @@ def solve_with_techniques(board: Board) -> tuple[Board, list[Hint], bool]:
         if hint.action == "place":
             (r, c) = hint.cells[0]
             work.set_value(r, c, hint.digits[0])
-        apply_to_candidates(cg, hint)
+        apply_to_candidates(work, cg, hint)
     return work, steps, work.is_solved()
 
 
