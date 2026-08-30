@@ -289,3 +289,133 @@ def test_cage_sum_never_contradicts_a_known_solution():
         apply_to_candidates(board, cg, hint)
 
     assert fired, "expected cage_sum to find at least one deduction"
+
+
+# ---------------------------------------------------------------------------
+# Killer Sudoku: the 45-rule
+# ---------------------------------------------------------------------------
+
+# Box 1 is rows 1-3 x columns 1-3. These three cages sit wholly inside it and
+# cover six of its nine cells, totalling 30.
+_BOX1_PARTIAL = [
+    Cage.of([(0, 0), (0, 1)], 10),
+    Cage.of([(1, 0), (1, 1)], 11),
+    Cage.of([(2, 0), (2, 1)], 9),
+]
+
+
+def test_forty_five_rule_finds_an_innie():
+    """Cages inside box 1 total 38 and cover all but r1c3, so it must be 45-38."""
+    board = Board(cages=_BOX1_PARTIAL + [Cage.of([(1, 2), (2, 2)], 8)])
+    hint = T.forty_five_rule(board, _cg(board))
+    assert hint.technique == "45-rule (innie)"
+    assert hint.action == "place"
+    assert hint.cells == [(0, 2)]
+    assert hint.digits == [7]
+    assert hint.units == ["box 1"]
+    assert "45 − 38 = 7" in hint.explanation
+
+
+def test_forty_five_rule_finds_an_outie():
+    """Cages meeting box 1 cover it and spill into r3c4 alone, so that cell is
+    pinned by their total minus 45."""
+    board = Board(
+        cages=_BOX1_PARTIAL + [Cage.of([(0, 2), (1, 2), (2, 2), (2, 3)], 22)]
+    )
+    hint = T.forty_five_rule(board, _cg(board))
+    assert hint.technique == "45-rule (outie)"
+    assert hint.action == "place"
+    assert hint.cells == [(2, 3)]
+    assert hint.digits == [7]
+    assert hint.units == ["box 1"]
+    assert "52 − 45 = 7" in hint.explanation
+
+
+def test_forty_five_rule_applies_to_a_row():
+    """Four cages inside row 1 total 38 and leave only r1c9."""
+    board = Board(
+        cages=[
+            Cage.of([(0, 0), (0, 1)], 10),
+            Cage.of([(0, 2), (0, 3)], 11),
+            Cage.of([(0, 4), (0, 5)], 9),
+            Cage.of([(0, 6), (0, 7)], 8),
+        ]
+    )
+    hint = T.forty_five_rule(board, _cg(board))
+    assert hint.cells == [(0, 8)]
+    assert hint.digits == [7]
+    assert hint.units == ["row 1"]
+
+
+def test_forty_five_rule_applies_to_a_column():
+    board = Board(
+        cages=[
+            Cage.of([(0, 0), (1, 0)], 10),
+            Cage.of([(2, 0), (3, 0)], 11),
+            Cage.of([(4, 0), (5, 0)], 9),
+            Cage.of([(6, 0), (7, 0)], 8),
+        ]
+    )
+    hint = T.forty_five_rule(board, _cg(board))
+    assert hint.cells == [(8, 0)]
+    assert hint.digits == [7]
+    assert hint.units == ["column 1"]
+
+
+def test_forty_five_rule_is_silent_when_two_cells_are_unaccounted_for():
+    """Two cells short of a full unit, the difference constrains a set rather
+    than pinning a value — out of scope for the single-cell rule."""
+    board = Board(cages=_BOX1_PARTIAL)
+    assert T.forty_five_rule(board, _cg(board)) is None
+
+
+def test_forty_five_rule_is_silent_on_a_classic_board():
+    board = Board.from_string(EASY)
+    assert T.forty_five_rule(board, _cg(board)) is None
+
+
+def test_forty_five_rule_runs_after_cage_sum():
+    names = [fn.__name__ for fn in T.TECHNIQUES]
+    assert names.index("cage_sum") < names.index("forty_five_rule")
+
+
+def _box_cages_leaving_one_innie():
+    """Four cages wholly inside each box, covering eight of its nine cells.
+
+    The row-aligned tiling used elsewhere never yields a single innie (every box
+    comes up three cells short), so the 45-rule needs its own layout. The ninth
+    cell of each box is deliberately left uncaged — a part-caged board is legal,
+    and the innie arithmetic doesn't care whether that cell belongs to a cage.
+    """
+    solved = Board.from_string(SOLUTION)
+    total = lambda group: sum(solved.value(r, c) for r, c in group)
+    cages = []
+    for br in range(3):
+        for bc in range(3):
+            r0, c0 = br * 3, bc * 3
+            for group in (
+                [(r0, c0), (r0, c0 + 1)],
+                [(r0 + 1, c0), (r0 + 1, c0 + 1)],
+                [(r0 + 2, c0), (r0 + 2, c0 + 1)],
+                [(r0, c0 + 2), (r0 + 1, c0 + 2)],
+            ):
+                cages.append(Cage.of(group, total(group)))
+    return cages
+
+
+def test_forty_five_rule_never_contradicts_a_known_solution():
+    """Every cage sum comes from SOLUTION, so SOLUTION satisfies them all; an
+    innie's value is forced by those sums, so it must agree with SOLUTION."""
+    solution = Board.from_string(SOLUTION)
+    board = Board(cages=_box_cages_leaving_one_innie())
+    cg = working_candidates(board)
+    fired = 0
+    while (hint := T.forty_five_rule(board, cg)) is not None and fired < 300:
+        fired += 1
+        r, c = hint.cells[0]
+        assert hint.digits[0] == solution.value(r, c), (
+            f"placed {hint.digits[0]} at {(r, c)}, solution has {solution.value(r, c)}"
+        )
+        board.set_value(r, c, hint.digits[0])
+        apply_to_candidates(board, cg, hint)
+    assert fired == 9, f"expected one innie per box, got {fired}"

@@ -442,10 +442,109 @@ def cage_sum(board: Board, cg: CandGrid) -> Optional[Hint]:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Killer Sudoku: the 45-rule (innies and outies)
+# ---------------------------------------------------------------------------
+
+UNIT_TOTAL = sum(DIGITS)  # 45 — every unit holds each digit exactly once
+
+
+def _covered(cages: list[Cage]) -> set[Coord]:
+    out: set[Coord] = set()
+    for cage in cages:
+        out |= cage.cells
+    return out
+
+
+def _forty_five_placement(
+    cg: CandGrid, cell: Coord, value: int
+) -> bool:
+    """Whether ``value`` at ``cell`` is a placement worth reporting."""
+    if not 1 <= value <= 9 or cell not in cg:
+        return False
+    if value not in cg[cell]:
+        return False  # contradiction, not a hint — is_valid's business
+    return len(cg[cell]) > 1  # a lone candidate is a naked single, reported simpler
+
+
+def forty_five_rule(board: Board, cg: CandGrid) -> Optional[Hint]:
+    """Pin a single innie or outie by the 45-rule.
+
+    Two arithmetic shapes, both from "every unit totals 45":
+
+    *Innie* — the cages lying wholly inside a unit cover all but one of its
+    cells, so that cell holds ``45 - (those cages' total)``.
+
+    *Outie* — the cages meeting a unit cover it entirely and spill outside it by
+    exactly one cell, so that cell holds ``(their total) - 45``.
+
+    Only the single-cell case; when two or more cells are unaccounted for the
+    difference constrains a set rather than pinning a value, which is a
+    deliberate follow-up.
+    """
+    if not board.cages:
+        return None
+
+    for label, cells in board.units():
+        unit = set(cells)
+
+        # --- innie -------------------------------------------------------
+        inside = [cage for cage in board.cages if cage.cells <= unit]
+        rest = unit - _covered(inside)
+        if len(rest) == 1:
+            cell = next(iter(rest))
+            total = sum(cage.sum for cage in inside)
+            value = UNIT_TOTAL - total
+            if _forty_five_placement(cg, cell, value):
+                return Hint(
+                    technique="45-rule (innie)",
+                    level=4,
+                    action="place",
+                    cells=[cell],
+                    digits=[value],
+                    units=[label],
+                    explanation=(
+                        f"The cages wholly inside {label} total {total} and cover "
+                        f"all of it but {cell_name(*cell)}. Every unit totals "
+                        f"{UNIT_TOTAL}, so {cell_name(*cell)} must be "
+                        f"{UNIT_TOTAL} − {total} = {value}."
+                    ),
+                )
+
+        # --- outie -------------------------------------------------------
+        touching = [cage for cage in board.cages if cage.cells & unit]
+        reach = _covered(touching)
+        if not unit <= reach:
+            continue  # part of the unit is uncaged; the arithmetic won't close
+        outside = reach - unit
+        if len(outside) == 1:
+            cell = next(iter(outside))
+            total = sum(cage.sum for cage in touching)
+            value = total - UNIT_TOTAL
+            if _forty_five_placement(cg, cell, value):
+                return Hint(
+                    technique="45-rule (outie)",
+                    level=4,
+                    action="place",
+                    cells=[cell],
+                    digits=[value],
+                    units=[label],
+                    explanation=(
+                        f"The cages meeting {label} total {total} and cover it "
+                        f"entirely, sticking out only into {cell_name(*cell)}. "
+                        f"{label} itself accounts for {UNIT_TOTAL}, so "
+                        f"{cell_name(*cell)} must be {total} − {UNIT_TOTAL} = "
+                        f"{value}."
+                    ),
+                )
+    return None
+
+
 TECHNIQUES = [
     naked_single,
     hidden_single,
     cage_sum,
+    forty_five_rule,
     naked_pair,
     naked_triple,
     hidden_pair,
