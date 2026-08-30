@@ -1,13 +1,15 @@
 """Seeding and self-calibration of the digit template store.
 
-``ensure_seed`` renders the digits 1–9 in a few built-in fonts/scales so the very
-first parse produces a reasonable guess. ``learn_from_board`` is called when the
+``ensure_seed`` loads baked exemplars for the digits 1–9 so the very first parse
+produces a reasonable guess. ``learn_from_board`` is called when the
 user confirms a corrected board: each labelled glyph it can re-extract from the
 source image becomes a new exemplar, so accuracy improves on the user's specific
 app with every confirmed screenshot.
 """
 
 from __future__ import annotations
+
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -20,6 +22,18 @@ _SEED_FONTS = [
     cv2.FONT_HERSHEY_TRIPLEX,
 ]
 
+# Wider set, used for the cage-sum classifier which also needs a zero.
+_SUM_FONTS = _SEED_FONTS + [cv2.FONT_HERSHEY_PLAIN, cv2.FONT_HERSHEY_COMPLEX]
+_SUM_SCALES = ((1.6, 2), (1.9, 3), (1.4, 3), (1.6, 4), (1.8, 5), (2.0, 6))
+
+# Exemplars are baked to disk rather than rendered on demand: `cv2.putText` with
+# anti-aliasing does not rasterise identically across platforms, and classifying
+# ~16px glyphs is sensitive enough that macOS and Linux disagreed on more than
+# half the cage sums of the same screenshot. Shipping the bitmaps makes the
+# reader deterministic wherever it runs. Regenerate with:
+#     python -m sudoku.reader.calibrate
+SEED_FILE = Path(__file__).with_name("glyph_seeds.npz")
+
 
 def _render_digit(d: int, font: int, scale: float, thickness: int) -> np.ndarray:
     canvas = np.zeros((64, 64), np.uint8)
@@ -31,18 +45,43 @@ def _render_digit(d: int, font: int, scale: float, thickness: int) -> np.ndarray
     return canvas
 
 
+def render_seed_glyphs() -> dict[str, np.ndarray]:
+    """Render every seed exemplar. Only used to (re)generate ``SEED_FILE``."""
+    out: dict[str, np.ndarray] = {}
+    for d in range(10):
+        glyphs = []
+        fonts = _SUM_FONTS if d == 0 else _SEED_FONTS + _SUM_FONTS[len(_SEED_FONTS):]
+        for font in fonts:
+            for scale, thick in _SUM_SCALES:
+                norm = normalize_glyph(_render_digit(d, font, scale, thick))
+                if norm is not None:
+                    glyphs.append((norm * 255).astype(np.uint8))
+        out[str(d)] = np.stack(glyphs)
+    return out
+
+
+def seed_glyphs() -> dict[int, list[np.ndarray]]:
+    """The baked exemplars, as float images in [0, 1] keyed by digit."""
+    with np.load(SEED_FILE) as data:
+        return {
+            int(k): [g.astype(np.float32) / 255.0 for g in data[k]] for k in data.files
+        }
+
+
 def ensure_seed(store: TemplateStore, persist: bool = False) -> TemplateStore:
-    """Populate ``store`` with font-rendered exemplars if it is empty."""
+    """Populate ``store`` with the baked exemplars if it is empty.
+
+    Digits only — a Sudoku cell never holds a zero. The cage-sum classifier wants
+    one, and asks for the full set itself (see ``sudoku.reader.killer``).
+    """
     if not store.is_empty:
         return store
+    seeds = seed_glyphs()
     for d in range(1, 10):
-        for font in _SEED_FONTS:
-            for scale, thick in ((1.6, 2), (1.9, 3)):
-                glyph = _render_digit(d, font, scale, thick)
-                norm = normalize_glyph(glyph)
-                if norm is not None:
-                    store.add(d, norm, persist=persist)
+        for norm in seeds[d]:
+            store.add(d, norm, persist=persist)
     return store
+
 
 
 def learn_from_board(store: TemplateStore, image_bgr, confirmed) -> int:
@@ -80,3 +119,8 @@ def loaded_store(directory=None) -> TemplateStore:
     if store.is_empty:
         ensure_seed(store, persist=False)
     return store
+
+
+if __name__ == "__main__":  # pragma: no cover - regeneration helper
+    np.savez_compressed(SEED_FILE, **render_seed_glyphs())
+    print(f"wrote {SEED_FILE}")

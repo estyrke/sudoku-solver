@@ -26,7 +26,7 @@ import cv2
 import numpy as np
 
 from ..model import DIGITS, Board, Cage, Cell, sum_bounds
-from .calibrate import loaded_store
+from .calibrate import loaded_store, seed_glyphs
 from .cell_parse import parse_cell
 from .classify import TemplateStore, normalize_glyph
 from .grid_detect import _order_points, decode_image, find_grid_quad
@@ -146,32 +146,15 @@ def _label_cages(coloured: np.ndarray) -> np.ndarray:
 
 
 def sum_store() -> TemplateStore:
-    """Font-rendered exemplars for 0-9.
+    """Baked exemplars for 0-9.
 
     Separate from the Sudoku store, which holds 1-9 only — a cell never contains a
-    zero, but a cage sum of 10, 20, 30 or 40 certainly does.
+    zero, but a cage sum of 10, 20, 30 or 40 certainly does. The bitmaps are
+    loaded rather than rendered so the reader classifies identically on every
+    platform; see ``sudoku.reader.calibrate``.
     """
     store = TemplateStore()
-    store.exemplars = {d: [] for d in range(10)}
-    fonts = (
-        cv2.FONT_HERSHEY_SIMPLEX,
-        cv2.FONT_HERSHEY_DUPLEX,
-        cv2.FONT_HERSHEY_TRIPLEX,
-        cv2.FONT_HERSHEY_PLAIN,
-        cv2.FONT_HERSHEY_COMPLEX,
-    )
-    for d in range(10):
-        for font in fonts:
-            for scale, thickness in ((1.6, 2), (1.9, 3), (1.4, 3), (1.6, 4), (1.8, 5), (2.0, 6)):
-                canvas = np.zeros((72, 72), np.uint8)
-                (w, h), _ = cv2.getTextSize(str(d), font, scale, thickness)
-                cv2.putText(
-                    canvas, str(d), ((72 - w) // 2, (72 + h) // 2),
-                    font, scale, 255, thickness, cv2.LINE_AA,
-                )
-                glyph = normalize_glyph(canvas)
-                if glyph is not None:
-                    store.exemplars[d].append(glyph)
+    store.exemplars = seed_glyphs()
     return store
 
 
