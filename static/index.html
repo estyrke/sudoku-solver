@@ -77,12 +77,21 @@
           <div class="board-wrap">
             <div id="qBoard" class="qboard"></div>
             <div class="actions">
-              <button id="qSolve" class="primary">Solve</button>
+              <button id="qGetHint" class="primary">Get hint</button>
+              <button id="qApply" disabled>Apply step</button>
+              <button id="qSolve">Solve</button>
             </div>
           </div>
 
           <aside class="panel">
-            <h2>Result</h2>
+            <h2>Hint</h2>
+            <div id="qHint" class="hint empty">No hint yet.</div>
+            <div id="qReveal" class="reveal" hidden>
+              <button data-level="1">Nudge</button>
+              <button data-level="2">Technique</button>
+              <button data-level="3">Full</button>
+            </div>
+            <h2 class="result-heading">Result</h2>
             <div id="qResult" class="hint empty">No solve yet.</div>
           </aside>
         </div>

@@ -14,6 +14,7 @@
   ];
 
   let panelEl, sizeInput, paletteEl, boardEl, resultEl;
+  let hintEl, revealEl, applyBtn;
 
   // --- state ------------------------------------------------------------
   let n = DEFAULT_N;
@@ -23,6 +24,8 @@
   let activeRegion = 0;
   let isMouseDown = false;
   let pendingClick = null; // {i, timer} — debounced single-click awaiting a possible dblclick
+  let currentHint = null; // {hint, nudge, technique}
+  let revealLevel = 0;
 
   function makeEmpty(size) {
     // Unpainted cells default to region: null (never inferred, never region 0 —
@@ -62,12 +65,23 @@
       const el = boardEl.children[i];
       const cell = cells[i];
       el.style.background = cell.region === null ? "" : colorForRegion(cell.region);
+      el.classList.remove("target");
       el.innerHTML = "";
       if (cell.state === "queen") {
         el.appendChild(glyph("queen", "♛"));
       } else if (cell.state === "marked") {
         el.appendChild(glyph("mark", "✕"));
       }
+    }
+    applyHintHighlight();
+  }
+
+  function applyHintHighlight() {
+    // Full-reveal level highlights the hint's target cell(s), the same way
+    // Sudoku highlights `.target` cells on its board.
+    if (!currentHint || revealLevel < 3) return;
+    for (const { r, c } of currentHint.hint.cells) {
+      boardEl.children[idx(r, c)].classList.add("target");
     }
   }
 
@@ -125,6 +139,7 @@
     if (tool !== "paint") return;
     if (cells[i].region === activeRegion) return;
     cells[i].region = activeRegion;
+    clearHint();
     render();
   }
 
@@ -169,6 +184,7 @@
     const cell = cells[i];
     cell.state = cell.state === "empty" ? "marked" : "empty";
     clearResult();
+    clearHint();
     render();
   }
 
@@ -176,6 +192,7 @@
     const cell = cells[i];
     cell.state = cell.state === "queen" ? "empty" : "queen";
     clearResult();
+    clearHint();
     render();
   }
 
@@ -203,6 +220,7 @@
     activeRegion = 0;
     tool = "cursor";
     clearResult();
+    clearHint();
     renderPalette();
   }
 
@@ -213,6 +231,7 @@
     const maxRegion = cells.reduce((m, c) => Math.max(m, c.region ?? -1), -1);
     regionCount = Math.max(regionCount, maxRegion + 1);
     renderPalette();
+    clearHint();
     render();
   }
 
@@ -250,6 +269,86 @@
     }
   }
 
+  // --- hints ----------------------------------------------------------------
+  function clearHint() {
+    currentHint = null;
+    revealLevel = 0;
+    applyBtn.disabled = true;
+    revealEl.hidden = true;
+    hintEl.className = "hint empty";
+    hintEl.textContent = "No hint yet.";
+    // Callers re-render afterward (mirrors sudoku.js) — resetState() in
+    // particular calls this before buildGrid() rebuilds the board DOM for a
+    // possibly different N, so rendering here would touch stale/mismatched
+    // cell elements.
+  }
+
+  async function getHint() {
+    let data;
+    try {
+      const res = await fetch("/queens/hint", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(toPayload()),
+      });
+      data = await res.json();
+    } catch (err) {
+      currentHint = null;
+      revealEl.hidden = true;
+      applyBtn.disabled = true;
+      hintEl.className = "hint";
+      hintEl.innerHTML = `<span class="warn">Hint request failed: ${err.message}</span>`;
+      render();
+      return;
+    }
+    if (!data.ok) {
+      currentHint = null;
+      revealEl.hidden = true;
+      applyBtn.disabled = true;
+      hintEl.className = "hint";
+      hintEl.innerHTML = `<span class="warn">${data.reason}</span>`;
+      render();
+      return;
+    }
+    currentHint = data;
+    revealLevel = 1;
+    applyBtn.disabled = false;
+    revealEl.hidden = false;
+    showReveal();
+  }
+
+  function showReveal() {
+    const { nudge, technique, hint } = currentHint;
+    let html = "";
+    if (revealLevel >= 1) html += `<div>${nudge}</div>`;
+    if (revealLevel >= 2) html += `<div class="tech">${technique}</div>`;
+    if (revealLevel >= 3) html += `<div>${hint.explanation}</div>`;
+    hintEl.className = "hint";
+    hintEl.innerHTML = html;
+    revealEl.querySelectorAll("button").forEach((b) =>
+      b.classList.toggle("active", Number(b.dataset.level) === revealLevel)
+    );
+    render(); // refresh the board highlight for level 3
+  }
+
+  function applyStep() {
+    if (!currentHint) return;
+    const h = currentHint.hint;
+    if (h.action === "place") {
+      const { r, c } = h.cells[0];
+      cells[idx(r, c)].state = "queen";
+    } else {
+      // Elimination hints (issues #7/#8): the ruled-out cells become Marks,
+      // same as a player manually ruling them out.
+      for (const { r, c } of h.cells) {
+        cells[idx(r, c)].state = "marked";
+      }
+    }
+    clearResult();
+    clearHint();
+    render();
+  }
+
   // --- mount --------------------------------------------------------------
   function mount(containerEl) {
     panelEl = containerEl;
@@ -257,10 +356,21 @@
     paletteEl = panelEl.querySelector("#qPalette");
     boardEl = panelEl.querySelector("#qBoard");
     resultEl = panelEl.querySelector("#qResult");
+    hintEl = panelEl.querySelector("#qHint");
+    revealEl = panelEl.querySelector("#qReveal");
+    applyBtn = panelEl.querySelector("#qApply");
 
     panelEl.querySelector("#qNew").addEventListener("click", newBoard);
     panelEl.querySelector("#qClear").addEventListener("click", clearBoard);
     panelEl.querySelector("#qSolve").addEventListener("click", solveBoard);
+    panelEl.querySelector("#qGetHint").addEventListener("click", getHint);
+    applyBtn.addEventListener("click", applyStep);
+    revealEl.querySelectorAll("button").forEach((b) =>
+      b.addEventListener("click", () => {
+        revealLevel = Number(b.dataset.level);
+        showReveal();
+      })
+    );
     window.addEventListener("mouseup", () => {
       isMouseDown = false;
     });

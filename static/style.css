@@ -210,6 +210,10 @@ button:disabled { opacity: .5; cursor: default; }
   touch-action: none;
 }
 
+.qcell.target { background: var(--target); }
+
 .qmark { font-size: 22px; line-height: 1; pointer-events: none; }
 .qmark.queen { color: #1d2026; }
 .qmark.mark { color: #6b7280; font-size: 18px; }
+
+.result-heading { margin-top: 14px; }
