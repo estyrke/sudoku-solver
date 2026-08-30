@@ -96,10 +96,62 @@
           </aside>
         </div>
       </div>
+      <div data-tab-panel="killer">
+        <p class="sub">Drag out the cages and give each one its sum, then fill in digits or solve.</p>
+
+        <div class="kcontrols">
+          <button class="mode active" data-kmode="cages">Cages</button>
+          <button class="mode" data-kmode="digits">Digits</button>
+          <button id="kClear">Clear board</button>
+        </div>
+
+        <div id="kDigitControls" class="kcontrols" hidden>
+          <button class="mode active" data-kpen="pen">Pen</button>
+          <button class="mode" data-kpen="pencil">Pencil</button>
+        </div>
+
+        <div id="kStatus" class="status"></div>
+
+        <div id="kSumRow" class="kcontrols" hidden>
+          <span id="kSumLabel"></span>
+          <label>Sum <input id="kSumInput" type="number" min="3" max="45" /></label>
+          <button id="kDeleteCage">Delete cage</button>
+        </div>
+
+        <div class="layout">
+          <div class="board-wrap">
+            <div id="kBoard" class="board kboard"></div>
+            <div id="kNumpad" class="numpad">
+              <button class="num" data-digit="1">1</button>
+              <button class="num" data-digit="2">2</button>
+              <button class="num" data-digit="3">3</button>
+              <button class="num" data-digit="4">4</button>
+              <button class="num" data-digit="5">5</button>
+              <button class="num" data-digit="6">6</button>
+              <button class="num" data-digit="7">7</button>
+              <button class="num" data-digit="8">8</button>
+              <button class="num" data-digit="9">9</button>
+              <button id="kNumClear" class="num" aria-label="Clear cell">⌫</button>
+            </div>
+            <div class="actions">
+              <button id="kGetHint" class="primary">Get hint</button>
+              <button id="kSolve">Solve</button>
+            </div>
+          </div>
+
+          <aside class="panel">
+            <h2>Hint</h2>
+            <div id="kHint" class="hint empty">No hint yet.</div>
+            <h2 class="result-heading">Result</h2>
+            <div id="kResult" class="hint empty">No solve yet.</div>
+          </aside>
+        </div>
+      </div>
     </div>
   </main>
   <script src="/static/shell.js"></script>
   <script src="/static/sudoku.js"></script>
   <script src="/static/queens.js"></script>
+  <script src="/static/killer.js"></script>
 </body>
 </html>

@@ -217,3 +217,34 @@ button:disabled { opacity: .5; cursor: default; }
 .qmark.mark { color: #6b7280; font-size: 18px; }
 
 .result-heading { margin-top: 14px; }
+
+/* ---- Killer Sudoku ---------------------------------------------------- */
+
+.kcontrols { margin-top: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+.kboard .kcell { position: relative; user-select: none; }
+
+/* Cage outlines are drawn as inset dashed edges, so a cage reads as one
+   continuous outline sitting inside the ordinary grid lines. All four edges
+   share one overlay element so any combination composes correctly. */
+.kcell .cage-edge { position: absolute; inset: 3px; pointer-events: none; }
+.kcell .cage-edge.t { border-top: 2px dashed var(--line-bold); }
+.kcell .cage-edge.b { border-bottom: 2px dashed var(--line-bold); }
+.kcell .cage-edge.l { border-left: 2px dashed var(--line-bold); }
+.kcell .cage-edge.r { border-right: 2px dashed var(--line-bold); }
+
+.kcell .cage-sum {
+  position: absolute; top: 1px; left: 3px;
+  font-size: 11px; font-weight: 700; line-height: 1;
+  color: var(--accent);
+}
+
+.kcell.uncaged { background: repeating-linear-gradient(
+  45deg, transparent, transparent 6px, rgba(0, 0, 0, 0.04) 6px, rgba(0, 0, 0, 0.04) 12px); }
+.kcell.dragging { background: var(--sel); }
+.kcell.cage-selected { background: var(--target); }
+
+.kcell .val { font-size: 24px; }
+.kcell .marks { font-size: 10px; color: #667; align-self: end; letter-spacing: 1px; }
+
+#kStatus.error { color: #c62828; }

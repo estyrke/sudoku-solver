@@ -48,6 +48,39 @@ def _board_from_model(data: BoardModel) -> Board:
     return Board.from_dict({"cells": [c.model_dump() for c in data.cells]})
 
 
+class CoordModel(BaseModel):
+    r: int
+    c: int
+
+
+class CageModel(BaseModel):
+    cells: list[CoordModel]
+    sum: int
+
+
+class KillerBoardModel(BoardModel):
+    """A Killer board is a classic board plus cages — same context, same model,
+    per ``docs/adr/0002-killer-sudoku-extends-sudoku-context.md``."""
+
+    cages: list[CageModel] = []
+
+
+def _killer_board_from_model(data: KillerBoardModel) -> Board:
+    if len(data.cells) != 81:
+        raise HTTPException(400, "board must have 81 cells")
+    try:
+        return Board.from_dict(
+            {
+                "cells": [c.model_dump() for c in data.cells],
+                "cages": [cage.model_dump() for cage in data.cages],
+            }
+        )
+    except ValueError as exc:
+        # Cage rules (contiguity, size, reachable sum, overlap) are enforced in
+        # the model; surface the message rather than a 500.
+        raise HTTPException(400, str(exc))
+
+
 class QueensCellModel(BaseModel):
     state: str = "empty"
     region: int | None = None
@@ -202,3 +235,47 @@ def queens_hint_endpoint(data: QueensBoardModel) -> dict:
 
 # Static assets (css/js) served under /static.
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+
+
+@app.post("/killer/solve")
+def killer_solve_endpoint(data: KillerBoardModel) -> dict:
+    board = _killer_board_from_model(data)
+    solved = solve(board)
+    if solved is None:
+        return {
+            "ok": False,
+            "reason": "No solution exists for this board — check the cage sums.",
+        }
+    return {"ok": True, "board": solved.to_dict()}
+
+
+@app.post("/killer/hint")
+def killer_hint_endpoint(data: KillerBoardModel) -> dict:
+    """Killer hints run the same escalating technique list as classic Sudoku.
+
+    Cage no-repeat already constrains candidates (cage-mates are peers), so
+    these hints are sound on a Killer board today; the cage-*sum* techniques
+    land in issues #12 and #13 and slot into the same list.
+    """
+    board = _killer_board_from_model(data)
+    if not board.is_valid():
+        return {
+            "ok": False,
+            "reason": "The board is invalid — a digit repeats in a unit or a cage, "
+            "or a cage can no longer reach its sum.",
+        }
+    if board.is_solved():
+        return {"ok": False, "reason": "This board is already solved. 🎉"}
+    hint = find_hint(board)
+    if hint is None:
+        return {
+            "ok": False,
+            "reason": "No technique in the current set applies. The board may need a "
+            "more advanced strategy than is implemented yet.",
+        }
+    return {
+        "ok": True,
+        "nudge": _nudge(hint),
+        "technique": hint.technique,
+        "hint": hint.to_dict(),
+    }
