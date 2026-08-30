@@ -129,10 +129,18 @@
       // pseudo-elements would collide on cells needing two adjacent edges.
       const edge = document.createElement("div");
       edge.className = "cage-edge";
-      if (!inCage(r - 1, c)) edge.classList.add("t");
-      if (!inCage(r + 1, c)) edge.classList.add("b");
-      if (!inCage(r, c - 1)) edge.classList.add("l");
-      if (!inCage(r, c + 1)) edge.classList.add("r");
+      for (const [side, rr, cc] of [
+        ["t", r - 1, c],
+        ["b", r + 1, c],
+        ["l", r, c - 1],
+        ["r", r, c + 1],
+      ]) {
+        // Dash the sides that leave the cage. On the sides where it continues,
+        // stretch the overlay to the cell edge instead — otherwise every cell
+        // insets its outline and the dashes break at each internal junction,
+        // making one cage read as a row of separate boxes.
+        edge.classList.add(inCage(rr, cc) ? `x-${side}` : side);
+      }
       el.appendChild(edge);
       if (ci === selectedCage) el.classList.add("cage-selected");
 
@@ -159,9 +167,15 @@
       v.textContent = cell.value;
       el.appendChild(v);
     } else if (cell.marks.length) {
-      const m = document.createElement("span");
+      // One span per digit position, matching the 3x3 grid `.marks` lays out —
+      // a single span of joined text collapses into the grid's first cell.
+      const m = document.createElement("div");
       m.className = "marks";
-      m.textContent = cell.marks.slice().sort().join("");
+      for (let d = 1; d <= 9; d++) {
+        const s = document.createElement("span");
+        s.textContent = cell.marks.includes(d) ? d : "";
+        m.appendChild(s);
+      }
       el.appendChild(m);
     }
     return el;
