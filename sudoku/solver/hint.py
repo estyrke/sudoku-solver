@@ -99,6 +99,12 @@ def solve_with_techniques(board: Board) -> tuple[Board, list[Hint], bool]:
         if hint.action == "place":
             (r, c) = hint.cells[0]
             work.set_value(r, c, hint.digits[0])
+        else:
+            # Mirror the elimination onto the board's own pencil marks, not just
+            # the candidate grid. An impossible mark is already absent from `cg`,
+            # so without this the same hint would be re-found forever.
+            for (r, c) in hint.cells:
+                work.cell(r, c).pencil_marks -= set(hint.digits)
         apply_to_candidates(work, cg, hint)
     return work, steps, work.is_solved()
 

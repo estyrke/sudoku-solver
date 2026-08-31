@@ -419,3 +419,75 @@ def test_forty_five_rule_never_contradicts_a_known_solution():
         board.set_value(r, c, hint.digits[0])
         apply_to_candidates(board, cg, hint)
     assert fired == 9, f"expected one innie per box, got {fired}"
+
+
+# ---------------------------------------------------------------------------
+# The player's own notes
+# ---------------------------------------------------------------------------
+
+
+def test_impossible_pencil_mark_flags_a_row_conflict():
+    board = Board.from_string(EASY)
+    board.cell(0, 2).pencil_marks = {1, 2, 4, 5}  # r1c1 already holds the 5
+    hint = T.impossible_pencil_mark(board, _cg(board))
+    assert hint.technique == "Impossible pencil mark"
+    assert hint.action == "eliminate"
+    assert hint.cells == [(0, 2)]
+    assert 5 in hint.digits
+    assert "r1c1" in hint.explanation
+
+
+def test_impossible_pencil_mark_flags_a_cage_mate():
+    """The case that actually bites on Killer boards: a cage-mate rules the digit
+    out even though it shares no row, column or box, which most apps' auto-notes
+    don't account for."""
+    cage = Cage.of([(0, 2), (1, 2), (1, 3)], 15)
+    board = Board(cages=[cage])
+    board.set_value(1, 3, 4)
+    board.cell(0, 2).pencil_marks = {1, 4, 7}
+    assert 4 in Board().candidates(0, 2)  # legal but for the cage
+    hint = T.impossible_pencil_mark(board, _cg(board))
+    assert hint.cells == [(0, 2)]
+    assert hint.digits == [4]
+    assert "r2c4" in hint.explanation
+    assert "15-cage" in hint.explanation
+    assert hint.units == ["the 15-cage at r1c3"]
+
+
+def test_impossible_pencil_mark_is_silent_when_marks_are_legal():
+    board = Board.from_string(EASY)
+    board.cell(0, 2).pencil_marks = set(board.candidates(0, 2))
+    assert T.impossible_pencil_mark(board, _cg(board)) is None
+
+
+def test_impossible_pencil_mark_is_silent_without_marks():
+    board = Board.from_string(EASY)
+    assert T.impossible_pencil_mark(board, _cg(board)) is None
+
+
+def test_impossible_pencil_mark_runs_before_everything_else():
+    """It has to come first: a deduction drawn from corrected candidates is
+    unreadable to someone still looking at the uncorrected marks."""
+    assert T.TECHNIQUES[0].__name__ == "impossible_pencil_mark"
+
+
+def test_a_stale_mark_is_reported_before_the_single_it_hides():
+    """Regression for the reported bug: the engine offered a hidden single that
+    the player could not see, because it had quietly dropped the mark that made
+    the digit ambiguous."""
+    board = Board.from_string(EASY)
+    board.cell(0, 2).pencil_marks = {1, 2, 4, 5}
+    first = find_hint(board)
+    assert first.technique == "Impossible pencil mark"
+
+
+def test_solve_with_techniques_terminates_despite_stale_marks():
+    """A stale mark is already absent from the candidate grid, so eliminating it
+    changes nothing there — the run must strip it from the board's marks too or
+    the same hint is re-found forever."""
+    board = Board.from_string(EASY)
+    board.cell(0, 2).pencil_marks = {1, 2, 4, 5}
+    final, steps, solved = solve_with_techniques(board)
+    assert solved
+    assert any(s.technique == "Impossible pencil mark" for s in steps)
+    assert 5 not in final.cell(0, 2).pencil_marks

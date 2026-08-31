@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from itertools import combinations
 from typing import Optional
 
-from ..model import DIGITS, Board, Cage, box_index, cell_name
+from ..model import COORDS, DIGITS, Board, Cage, box_index, cell_name
 
 Coord = tuple[int, int]
 CandGrid = dict[Coord, set[int]]
@@ -60,6 +60,79 @@ def _names(cells: list[Coord]) -> str:
 
 def _empties(cells: list[Coord], cg: CandGrid) -> list[Coord]:
     return [cell for cell in cells if cell in cg]
+
+
+# ---------------------------------------------------------------------------
+# The player's own notes
+# ---------------------------------------------------------------------------
+
+
+def _ruled_out_by(board: Board, cell: Coord, d: int) -> Optional[tuple[Coord, str]]:
+    """The placed ``d`` that makes it impossible at ``cell``, and how it relates."""
+    r, c = cell
+    cage = board.cage_at(r, c)
+    for peer in sorted(board.peers(r, c)):
+        if board.value(*peer) != d:
+            continue
+        pr, pc = peer
+        if pr == r:
+            return peer, f"row {r + 1}"
+        if pc == c:
+            return peer, f"column {c + 1}"
+        if box_index(pr, pc) == box_index(r, c):
+            return peer, f"box {box_index(r, c) + 1}"
+        if cage is not None and peer in cage.cells:
+            return peer, _cage_label(cage)
+    return None
+
+
+def impossible_pencil_mark(board: Board, cg: CandGrid) -> Optional[Hint]:
+    """Flag a pencil mark that a placed digit already rules out.
+
+    The engine reasons over the player's marks intersected with what is actually
+    legal, so an impossible mark is quietly ignored. That makes a later deduction
+    look like sleight of hand — "8 fits only in r8c9" reads as nonsense to someone
+    who can still see an 8 pencilled in r8c8. Correcting the marks is the missing
+    first step, not something to apply behind the player's back
+    (``sudoku/CONTEXT.md``, *Pencil mark*).
+
+    It matters most on Killer boards, where a cage-mate rules out a digit even
+    though it shares no row, column or box — a constraint most apps' auto-notes
+    don't apply.
+    """
+    for r, c in COORDS:
+        if board.value(r, c) is not None:
+            continue
+        marks = board.cell(r, c).pencil_marks
+        if not marks:
+            continue
+        stale = sorted(marks - board.candidates(r, c))
+        if not stale:
+            continue
+
+        blame = {d: _ruled_out_by(board, (r, c), d) for d in stale}
+        parts = [
+            f"{d} is already in {cell_name(*found[0])} ({found[1]})"
+            for d, found in blame.items()
+            if found is not None
+        ]
+        first = next((f for f in blame.values() if f is not None), None)
+        return Hint(
+            technique="Impossible pencil mark",
+            level=0,
+            action="eliminate",
+            cells=[(r, c)],
+            digits=stale,
+            units=[first[1]] if first else [],
+            explanation=(
+                f"{cell_name(r, c)} is pencilled "
+                f"{', '.join(str(d) for d in stale)}, but "
+                + "; ".join(parts)
+                + ". Rub that out before looking for anything cleverer — "
+                "the board reads differently once it's gone."
+            ),
+        )
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -541,6 +614,9 @@ def forty_five_rule(board: Board, cg: CandGrid) -> Optional[Hint]:
 
 
 TECHNIQUES = [
+    # First: the player's own notes must be right before anything derived from
+    # them will make sense to them.
+    impossible_pencil_mark,
     naked_single,
     hidden_single,
     cage_sum,
