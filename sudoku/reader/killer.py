@@ -41,16 +41,26 @@ CELL = WARP // 9
 # reference screenshot: the marks occupy ~0.31..0.95 of the full cell height.
 MARK_BAND = (0.25, 1.0)
 
-# The cage sum's box within a cell, as fractions of cell size. Kept clear of the
-# cage outline on the top/left and of the large placed digit below and right.
+# The cage sum's box within a cell, as fractions of cell size. The left edge used
+# to sit at 0.12 to dodge the cage outline, but that clipped the leading digit of
+# some sums; the outline is now excluded by shape instead (see SUM_MIN_WIDTH), so
+# the crop can start wider and catch the whole number.
 SUM_TOP, SUM_BOTTOM = 0.10, 0.34
-SUM_LEFT, SUM_RIGHT = 0.12, 0.44
+SUM_LEFT, SUM_RIGHT = 0.10, 0.44
 
 # A cage outline sits a few percent inside the cell edge rather than on the grid
 # line, so its presence is probed across a range of insets.
 BORDER_INSET = (0.035, 0.10)
 BORDER_SPAN = (0.22, 0.78)  # sample the middle of a side, clear of the corners
 BORDER_COVERAGE = 0.5  # fraction of the side that must be coloured
+
+# A cage outline clipping into the sum crop leaves a hairline vertical sliver,
+# which is tall enough and narrow enough to pass for a digit — and a tall thin
+# stroke classifies as a 1, turning a 9 into a 19. Real digits are far chunkier:
+# the narrowest is 1 itself at ~6px wide and aspect ~0.35, against a sliver's
+# 1px and 0.04.
+SUM_MIN_WIDTH = 0.03  # fraction of cell width
+SUM_MIN_ASPECT = 0.15  # width / height
 
 SUM_CONF = 0.45  # NCC below this marks the sum as needing a look
 
@@ -176,6 +186,8 @@ def _read_sum(
         # The outline leaves long thin runs in this crop; digits are compact.
         if not (0.09 * CELL <= h <= 0.26 * CELL) or w > 0.20 * CELL or area < 20:
             continue
+        if w < SUM_MIN_WIDTH * CELL or w / h < SUM_MIN_ASPECT:
+            continue  # an outline sliver, not a digit
         glyphs.append((x, (labels[y : y + h, x : x + w] == i).astype(np.uint8) * 255))
     if not glyphs:
         return None, 0.0

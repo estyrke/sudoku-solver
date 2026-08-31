@@ -84,6 +84,7 @@ from sudoku.reader.cell_parse import _positional_marks
 from sudoku.reader.killer import read_killer_board
 
 FIXTURE = Path(__file__).parent / "fixtures" / "puzzle_page_killer_sample_board.png"
+FIXTURE2 = Path(__file__).parent / "fixtures" / "puzzle_page_killer_board2.png"
 
 
 def test_positional_marks_defaults_to_the_whole_cell():
@@ -125,8 +126,8 @@ def test_killer_reader_recovers_the_cage_layout():
 
 
 def test_killer_reader_recovers_cage_sums():
-    """Sums are OCR'd from small glyphs, so allow a couple of misreads — the ones
-    it is unsure about are reported for the user to fix."""
+    """Every sum, exactly. This was 27/29 until the crop was widened and cage
+    outlines were excluded by shape rather than by dodging them."""
     read = _killer_fixture_read()
     board, unsure = read.board, read.unsure
     expected = {
@@ -137,8 +138,7 @@ def test_killer_reader_recovers_cage_sums():
         (7, 4): 7, (7, 6): 4, (7, 8): 14, (8, 1): 11, (8, 6): 12,
     }
     got = {min(cage.cells): cage.sum for cage in board.cages}
-    correct = sum(1 for anchor, total in expected.items() if got.get(anchor) == total)
-    assert correct >= len(expected) - 3, f"only {correct}/{len(expected)} sums correct"
+    assert got == expected
 
 
 def test_killer_reader_reads_pencil_marks_not_the_cage_sum():
@@ -176,15 +176,38 @@ def test_killer_reader_produces_a_usable_board():
         assert len(cage.cells) >= 2
 
 
-def test_killer_reader_checksum_detects_a_misread_sum():
-    """A full partition's cage sums must total 9x45. The reference board has one
-    sum the OCR gets wrong, so the checksum must notice — this is a detector, not
-    a corrector, and never rewrites a value."""
-    read = _killer_fixture_read()
-    assert read.board.is_fully_caged()
-    assert read.sum_total != 405, "fixture is expected to contain a misread sum"
-    assert not read.checksum_ok
-    assert read.needs_review
+def test_killer_reader_checksum_is_clean_on_both_reference_boards():
+    """Both reference screenshots now read exactly, so the 9x45 checksum passes
+    and nothing is flagged for review."""
+    for path in (FIXTURE, FIXTURE2):
+        read = read_killer_board(cv2.imread(str(path)))
+        assert read.board.is_fully_caged(), path.name
+        assert read.sum_total == 405, f"{path.name}: {read.sum_total}"
+        assert read.checksum_ok and not read.needs_review, path.name
+
+
+def test_killer_reader_handles_a_second_board_layout():
+    """A different cage layout entirely — 25 cages rather than 29 — so the
+    outline segmentation isn't just fitting the one board."""
+    read = read_killer_board(cv2.imread(str(FIXTURE2)))
+    assert len(read.board.cages) == 25
+    assert sum(len(c.cells) for c in read.board.cages) == 81
+    got = {min(c.cells): c.sum for c in read.board.cages}
+    assert got == {
+        (0,0):21,(0,1):15,(0,4):8,(0,5):21,(0,6):17,(1,1):21,(1,3):9,(1,7):31,
+        (2,4):7,(3,1):22,(3,3):12,(3,5):16,(3,8):10,(4,2):15,(4,3):17,(4,6):5,
+        (5,0):4,(5,6):36,(5,7):15,(6,0):13,(6,2):27,(6,8):21,(7,0):9,(7,2):15,
+        (7,3):18,
+    }
+
+
+def test_cage_outline_is_not_read_as_a_leading_one():
+    """Regression: a cage's left outline clipped into the sum crop as a 1px-wide
+    sliver, which passed the size filters and — being a tall thin stroke —
+    classified as a 1, turning r8c1's 9 into a 19."""
+    read = read_killer_board(cv2.imread(str(FIXTURE2)))
+    by_anchor = {min(c.cells): c.sum for c in read.board.cages}
+    assert by_anchor[(7, 0)] == 9, "leading-1 sliver is back"
 
 
 def test_killer_checksum_passes_on_a_correct_board():
