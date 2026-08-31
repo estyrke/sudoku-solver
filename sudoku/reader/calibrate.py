@@ -45,6 +45,54 @@ def _render_digit(d: int, font: int, scale: float, thickness: int) -> np.ndarray
     return canvas
 
 
+# Hershey draws 4 with a closed apex. This app draws it open-topped — the
+# diagonal and the stem never meet — and normalized cross-correlation matches
+# that shape to a 9 far better than to a closed 4, so every large 4 in both
+# reference screenshots read as a 9. Two exemplars of the real glyph fix it.
+#
+# Validated held-out rather than in-sample: exemplars taken from this board
+# correct all the 4s on a *different* screenshot (6/6), and exemplars from that
+# one correct all of this board's (13/13). Attempts to synthesise the shape with
+# `cv2.line` kept closing the apex under downsampling, and a topological
+# (hole-count) filter helped the large digits but wrecked the ~16px cage sums.
+_OPEN_FOUR_SOURCE = (
+    Path(__file__).resolve().parents[2]
+    / "tests"
+    / "fixtures"
+    / "puzzle_page_killer_sample_board.png"
+)
+_OPEN_FOUR_CELLS = ((7, 4), (8, 0))
+
+
+def _open_four_glyphs() -> list[np.ndarray]:
+    """Lift the app's open-topped 4 out of the reference screenshot.
+
+    Imported lazily: this is regeneration-time only, and ``killer`` imports
+    this module.
+    """
+    from .cell_parse import VALUE_MIN_H, _components, cell_ink
+    from .killer import CELL, _warp_board
+
+    img = cv2.imread(str(_OPEN_FOUR_SOURCE))
+    if img is None:  # pragma: no cover - only hit if the fixture goes missing
+        raise FileNotFoundError(f"missing reference screenshot: {_OPEN_FOUR_SOURCE}")
+    board = _warp_board(img)
+    out = []
+    for r, c in _OPEN_FOUR_CELLS:
+        ink = cell_ink(board[r * CELL : (r + 1) * CELL, c * CELL : (c + 1) * CELL])
+        biggest = max(
+            (comp for comp in _components(ink) if comp[3] >= VALUE_MIN_H * ink.shape[0]),
+            key=lambda comp: comp[4],
+            default=None,
+        )
+        if biggest is None:
+            continue
+        norm = normalize_glyph(biggest[0])
+        if norm is not None:
+            out.append(norm)
+    return out
+
+
 def render_seed_glyphs() -> dict[str, np.ndarray]:
     """Render every seed exemplar. Only used to (re)generate ``SEED_FILE``."""
     out: dict[str, np.ndarray] = {}
@@ -56,6 +104,8 @@ def render_seed_glyphs() -> dict[str, np.ndarray]:
                 norm = normalize_glyph(_render_digit(d, font, scale, thick))
                 if norm is not None:
                     glyphs.append((norm * 255).astype(np.uint8))
+        if d == 4:
+            glyphs += [(g * 255).astype(np.uint8) for g in _open_four_glyphs()]
         out[str(d)] = np.stack(glyphs)
     return out
 

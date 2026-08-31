@@ -204,3 +204,17 @@ def test_killer_checksum_passes_on_a_correct_board():
     assert read.sum_total == 405
     assert read.checksum_ok
     assert not read.needs_review
+
+
+def test_killer_reader_reads_the_apps_open_topped_four():
+    """Regression: the app draws 4 with an open apex, which cross-correlates to a
+    closed-apex Hershey 9 better than to its 4, so every large 4 read as a 9. A
+    wrong value is worse than a wrong cage sum — it makes the engine deduce
+    things that are simply false."""
+    board, _ = _killer_fixture_read().board, None
+    fours = [
+        (r, c) for r in range(9) for c in range(9) if board.value(r, c) == 4
+    ]
+    assert fours == [(7, 4), (8, 0)], f"expected 4s at r8c5 and r9c1, got {fours}"
+    assert board.value(7, 4) == 4
+    assert board.value(8, 0) == 4

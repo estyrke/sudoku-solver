@@ -260,3 +260,6 @@ button:disabled { opacity: .5; cursor: default; }
 #kStatus.error { color: #c62828; }
 .kcell.cage-unsure { background: #fff3cd; box-shadow: inset 0 0 0 2px #e0a800; }
 #kDropStatus.error { color: #c62828; }
+.totals { margin-top: 6px; font-size: 13px; color: #5b616e; }
+.totals.ok { color: #2e7d32; font-weight: 600; }
+.totals.bad { color: #c62828; font-weight: 600; }

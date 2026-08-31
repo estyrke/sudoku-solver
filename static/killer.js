@@ -101,7 +101,7 @@
 
   // ---- rendering ---------------------------------------------------------
 
-  let boardEl, statusEl, resultEl, sumRow, sumInput, sumLabel, deleteBtn;
+  let boardEl, statusEl, resultEl, sumRow, sumInput, sumLabel, deleteBtn, totalsEl;
 
   function render() {
     boardEl.innerHTML = "";
@@ -111,6 +111,42 @@
       }
     }
     renderCageEditor();
+    renderTotals();
+  }
+
+  // Every unit holds 1-9 exactly once, so a board fully covered by cages has
+  // sums totalling 9 x 45. Shown live: the reader's own check goes stale the
+  // moment a sum is corrected by hand, which is exactly when it's needed.
+  const UNIT_TOTAL = 45;
+  const FULL_TOTAL = UNIT_TOTAL * N;
+
+  function renderTotals() {
+    if (!totalsEl) return;
+    if (!cages.length) {
+      totalsEl.textContent = "";
+      totalsEl.className = "totals";
+      return;
+    }
+    const covered = cages.reduce((n, cage) => n + cage.cells.length, 0);
+    const total = cages.reduce((n, cage) => n + cage.sum, 0);
+    const bits = [
+      `${cages.length} cage${cages.length === 1 ? "" : "s"}`,
+      `${covered}/${N * N} cells`,
+      `sums total ${total}`,
+    ];
+    let state = "";
+    if (covered < N * N) {
+      bits.push(`${FULL_TOTAL - total} left to account for`);
+    } else if (total === FULL_TOTAL) {
+      bits.push("matches 405 \u2713");
+      state = " ok";
+    } else {
+      const off = total - FULL_TOTAL;
+      bits.push(`should be ${FULL_TOTAL} \u2014 ${Math.abs(off)} too ${off > 0 ? "high" : "low"}`);
+      state = " bad";
+    }
+    totalsEl.textContent = bits.join(" \u00b7 ");
+    totalsEl.className = "totals" + state;
   }
 
   function renderCell(r, c) {
@@ -445,6 +481,7 @@
     sumInput = panel.querySelector("#kSumInput");
     sumLabel = panel.querySelector("#kSumLabel");
     deleteBtn = panel.querySelector("#kDeleteCage");
+    totalsEl = panel.querySelector("#kTotals");
 
     reset();
 
