@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from ..model import COORDS, Board
+from ..model import COORDS, DIGITS, Board, can_reach
 from .techniques import CandGrid, TECHNIQUES, Hint, Coord
 
 
@@ -120,28 +120,104 @@ def solve(board: Board) -> Optional[Board]:
 
 
 def _backtrack(board: Board) -> bool:
-    best: Optional[Coord] = None
-    best_cands: set[int] = set()
+    """Depth-first search with cage-sum propagation.
+
+    Two things made the straightforward version unusable on a real Killer board.
+    It rebuilt every empty cell's candidate set from the board at every node —
+    34 million set constructions, 800 million cell lookups, on a board that took
+    108 seconds to crack. And it pruned only by asking whether the cage it had
+    just written into was still *arithmetically* completable, which is far weaker
+    than asking which digits its remaining cells can still hold: a cage whose sum
+    had become unreachable for a particular cell went unnoticed until the search
+    wandered all the way into it.
+
+    So candidates are carried incrementally and undone on backtrack, and each
+    placement re-prunes its cage down to digits that can still complete the
+    remaining total. Killer boards start nearly empty and lean on cage sums for
+    most of their constraint, so that propagation is what makes the search finite
+    in practice rather than merely in principle.
+    """
+    cands: dict[Coord, set[int]] = {}
     for r, c in COORDS:
         if board.value(r, c) is None:
-            cands = board.candidates(r, c)
-            if not cands:
+            cands[(r, c)] = board.candidates(r, c)
+            if not cands[(r, c)]:
                 return False
-            if best is None or len(cands) < len(best_cands):
-                best, best_cands = (r, c), cands
-                if len(cands) == 1:
-                    break
-    if best is None:
+    peers = {cell: tuple(board.peers(*cell)) for cell in cands}
+
+    # Per-cage bookkeeping, kept in step with the board: what the cage still owes,
+    # which of its cells are still empty, and which digits it has not used up.
+    cage_of: dict[Coord, int] = {}
+    owed: list[int] = []
+    empty: list[set[Coord]] = []
+    unused: list[set[int]] = []
+    for i, cage in enumerate(board.cages):
+        used, blank = set(), set()
+        for cell in cage.cells:
+            cage_of[cell] = i
+            v = board.value(*cell)
+            blank.add(cell) if v is None else used.add(v)
+        owed.append(cage.sum - sum(used))
+        empty.append(blank)
+        unused.append(set(DIGITS) - used)
+
+    def strip(cell: Coord, gone: set[int], undo: list) -> bool:
+        """Remove ``gone`` from ``cell``'s candidates; False if nothing survives."""
+        hit = cands[cell] & gone
+        if not hit:
+            return True
+        cands[cell] -= hit
+        undo.append((cell, hit))
+        return bool(cands[cell])
+
+    def prune(i: int, undo: list) -> bool:
+        """Cut cage ``i``'s empty cells to digits that can still complete its sum."""
+        cells, rem, pool = empty[i], owed[i], frozenset(unused[i])
+        k = len(cells)
+        if k == 0:
+            return rem == 0
+        for cell in cells:
+            keep = {
+                d
+                for d in cands[cell]
+                if d in pool and can_reach(k - 1, rem - d, pool - {d})
+            }
+            if not strip(cell, cands[cell] - keep, undo):
+                return False
         return True
-    r, c = best
-    cage = board.cage_at(r, c)
-    for d in best_cands:
-        board.set_value(r, c, d)
-        # Cage sums aren't expressible as per-cell candidates, so they can't be
-        # pruned above — without this check a classic-valid but sum-invalid grid
-        # would be returned as a solution.
-        if cage is None or board.cage_is_feasible(cage):
-            if _backtrack(board):
-                return True
-        board.set_value(r, c, None)
-    return False
+
+    opening: list = []
+    for i in range(len(board.cages)):
+        if not prune(i, opening):
+            return False
+
+    def step() -> bool:
+        if not cands:
+            return True
+        cell = min(cands, key=lambda x: len(cands[x]))
+        i = cage_of.get(cell)
+        for d in sorted(cands[cell]):
+            undo: list = []
+            saved = cands.pop(cell)
+            ok = all(strip(p, {d}, undo) for p in peers[cell] if p in cands)
+            touched = ok and i is not None
+            if touched:
+                empty[i].discard(cell)
+                owed[i] -= d
+                unused[i].discard(d)
+                ok = prune(i, undo)
+            if ok:
+                board.set_value(*cell, d)
+                if step():
+                    return True
+                board.set_value(*cell, None)
+            if touched:
+                empty[i].add(cell)
+                owed[i] += d
+                unused[i].add(d)
+            for other, hit in undo:
+                cands[other] |= hit
+            cands[cell] = saved
+        return False
+
+    return step()

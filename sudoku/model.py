@@ -10,6 +10,7 @@ Coordinates are 0-indexed ``(row, col)`` throughout. Human-facing labels (``r1c1
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 from itertools import combinations
 from typing import Iterable, Iterator, Optional
 
@@ -50,11 +51,15 @@ def sum_bounds(size: int) -> tuple[int, int]:
     return size * (size + 1) // 2, sum(range(10 - size, 10))
 
 
+@lru_cache(maxsize=None)
 def can_reach(size: int, total: int, allowed: frozenset[int]) -> bool:
     """Whether ``size`` distinct digits drawn from ``allowed`` can total ``total``.
 
     Pure arithmetic reachability — it says nothing about whether those digits can
     legally be placed given the rest of the board.
+
+    Cached: the solver asks this once per candidate per cage per node, and there
+    are only a few thousand distinct questions to ask.
     """
     if size == 0:
         return total == 0

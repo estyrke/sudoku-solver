@@ -82,6 +82,7 @@ def test_reader_reads_pencil_marks():
 from sudoku.model import Board
 from sudoku.reader.cell_parse import _positional_marks
 from sudoku.reader.killer import read_killer_board
+from sudoku.solver.hint import solve
 
 FIXTURE = Path(__file__).parent / "fixtures" / "puzzle_page_killer_sample_board.png"
 FIXTURE2 = Path(__file__).parent / "fixtures" / "puzzle_page_killer_board2.png"
@@ -228,6 +229,36 @@ def test_killer_checksum_passes_on_a_correct_board():
     assert read.sum_total == 405
     assert read.checksum_ok
     assert not read.needs_review
+
+
+def test_every_reference_board_solves_quickly_end_to_end():
+    """Read a screenshot, solve what comes out, and check the answer.
+
+    The budget is the point. Without cage-sum propagation the search took 108
+    seconds on one of these, which on the deployed function is not slowness but
+    a FUNCTION_INVOCATION_TIMEOUT and a Solve button that appears to do nothing.
+    These finish in milliseconds; ten seconds is loose enough for a slow CI box
+    and still an order of magnitude short of the behaviour it guards against.
+    """
+    import time
+
+    for path in (FIXTURE, FIXTURE2, FIXTURE3):
+        board = read_killer_board(cv2.imread(str(path))).board
+        started = time.perf_counter()
+        solved = solve(board)
+        elapsed = time.perf_counter() - started
+
+        assert solved is not None, f"{path.name} came out unsolvable"
+        assert solved.is_solved(), path.name
+        for cage in solved.cages:
+            total = sum(solved.value(r, c) for r, c in cage.cells)
+            assert total == cage.sum, f"{path.name}: {cage.sum}-cage totals {total}"
+        # the digits the player had already entered must survive the solve
+        for r in range(9):
+            for c in range(9):
+                if board.value(r, c) is not None:
+                    assert solved.value(r, c) == board.value(r, c), (path.name, r, c)
+        assert elapsed < 10, f"{path.name} took {elapsed:.1f}s"
 
 
 def test_killer_reader_handles_a_third_board_layout():
