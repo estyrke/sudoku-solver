@@ -85,6 +85,7 @@ from sudoku.reader.killer import read_killer_board
 
 FIXTURE = Path(__file__).parent / "fixtures" / "puzzle_page_killer_sample_board.png"
 FIXTURE2 = Path(__file__).parent / "fixtures" / "puzzle_page_killer_board2.png"
+FIXTURE3 = Path(__file__).parent / "fixtures" / "puzzle_page_killer_board3.png"
 
 
 def test_positional_marks_defaults_to_the_whole_cell():
@@ -176,10 +177,10 @@ def test_killer_reader_produces_a_usable_board():
         assert len(cage.cells) >= 2
 
 
-def test_killer_reader_checksum_is_clean_on_both_reference_boards():
-    """Both reference screenshots now read exactly, so the 9x45 checksum passes
+def test_killer_reader_checksum_is_clean_on_every_reference_board():
+    """All three reference screenshots read exactly, so the 9x45 checksum passes
     and nothing is flagged for review."""
-    for path in (FIXTURE, FIXTURE2):
+    for path in (FIXTURE, FIXTURE2, FIXTURE3):
         read = read_killer_board(cv2.imread(str(path)))
         assert read.board.is_fully_caged(), path.name
         assert read.sum_total == 405, f"{path.name}: {read.sum_total}"
@@ -227,6 +228,70 @@ def test_killer_checksum_passes_on_a_correct_board():
     assert read.sum_total == 405
     assert read.checksum_ok
     assert not read.needs_review
+
+
+def test_killer_reader_handles_a_third_board_layout():
+    """A third cage layout, 28 cages, every sum exact."""
+    read = read_killer_board(cv2.imread(str(FIXTURE3)))
+    assert len(read.board.cages) == 28
+    assert sum(len(c.cells) for c in read.board.cages) == 81
+    got = {min(c.cells): c.sum for c in read.board.cages}
+    assert got == {
+        (0,0):18,(0,1):10,(0,3):7,(0,4):18,(0,6):6,(0,8):25,(1,4):11,(2,0):9,
+        (2,1):14,(2,2):20,(2,6):9,(2,8):19,(3,3):8,(3,5):18,(3,7):32,(4,0):17,
+        (4,2):12,(5,1):14,(5,4):17,(6,0):6,(6,1):6,(6,3):8,(6,5):13,(6,6):20,
+        (6,8):24,(7,1):17,(8,0):16,(8,4):11,
+    }
+
+
+def test_killer_reader_reads_the_apps_italic_one():
+    """Regression: Puzzle Page sets its digits in an italic face, and an italic 1 —
+    a stroke leaning right off a short flag — is structurally a 7. Against upright
+    Hershey exemplars the 7 won by 0.615 to 0.603 and two of these three read as
+    7s. Slanted copies of every exemplar settle it."""
+    board = read_killer_board(cv2.imread(str(FIXTURE3))).board
+    ones = [(r, c) for r in range(9) for c in range(9) if board.value(r, c) == 1]
+    assert ones == [(6, 7), (7, 0), (8, 3)], f"expected three 1s, got {ones}"
+    assert not any(board.value(r, c) == 7 for r in range(9) for c in range(9))
+
+
+def test_killer_reader_reads_every_placed_digit_of_the_third_board():
+    """The whole pen grid, exactly — the digit counts the app prints under its
+    keypad (three 1s, three 2s, one 3, two 4s, ...) add up to these thirteen."""
+    board = read_killer_board(cv2.imread(str(FIXTURE3))).board
+    placed = {
+        (r, c): board.value(r, c)
+        for r in range(9)
+        for c in range(9)
+        if board.value(r, c) is not None
+    }
+    assert placed == {
+        (2, 3): 9, (3, 3): 6, (3, 4): 2, (5, 4): 4, (6, 0): 5, (6, 3): 3,
+        (6, 7): 1, (7, 0): 1, (7, 3): 4, (7, 6): 2, (8, 3): 1, (8, 4): 9,
+        (8, 5): 2,
+    }
+
+
+def test_board_frame_is_not_read_as_pencil_marks():
+    """Regression: in the bottom-right cell the outer frame sits closest to the
+    border crop and survived it as a full-width, one-pixel-tall hairline. Spread
+    across the three bottom sub-cells it cleared the ink threshold on its own,
+    inventing marks the player never wrote."""
+    assert read_killer_board(cv2.imread(str(FIXTURE3))).board.cell(8, 8).pencil_marks == {5, 8}
+    assert read_killer_board(cv2.imread(str(FIXTURE2))).board.cell(8, 8).pencil_marks == {
+        1, 2, 3, 4, 5, 6, 7, 9
+    }
+
+
+def test_positional_marks_ignores_a_hairline():
+    """The filter is on shape, not on a raised ink threshold: a line one pixel
+    thick is not a digit however much of the cell it crosses."""
+    ink = np.zeros((60, 60), np.uint8)
+    ink[59:60, 0:60] = 255  # the board's outer frame, clipped by the border crop
+    assert _positional_marks(ink) == set()
+
+    ink[42:58, 42:58] = 255  # a real mark alongside it still reads
+    assert _positional_marks(ink) == {9}
 
 
 def test_killer_reader_reads_the_apps_open_topped_four():

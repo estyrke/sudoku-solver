@@ -45,6 +45,30 @@ def _render_digit(d: int, font: int, scale: float, thickness: int) -> np.ndarray
     return canvas
 
 
+# Puzzle Page sets every digit in an *italic* face; the Hershey fonts are upright.
+# Slant is not a detail the matcher can shrug off, because `normalize_glyph` keeps
+# aspect ratio: an italic 1 is a stroke leaning right off a short flag, which is
+# structurally what a 7 is, so it out-correlated the upright 1 by a hair (0.615 to
+# 0.603) and two of three pen 1s read as 7s. Shipping a slanted copy of every
+# exemplar alongside the upright one settles it — the upright set still serves the
+# classic reader, whose app is not italic.
+#
+# The value is the middle of a wide plateau, measured over the pen digits of all
+# three reference screenshots: -0.18..-0.30 all score 33/33, -0.15 drops to 30/33,
+# and by -0.35 the slant is far enough to start pulling 8s onto 6.
+_ITALIC_SHEAR = -0.25
+
+
+def _italicise(canvas: np.ndarray, k: float) -> np.ndarray:
+    """Shear ``canvas`` about its vertical centre, leaning the top to the right."""
+    h, w = canvas.shape
+    pad = int(abs(k) * h) + 2
+    wide = np.zeros((h, w + 2 * pad), canvas.dtype)
+    wide[:, pad : pad + w] = canvas
+    M = np.float32([[1, k, -k * h / 2], [0, 1, 0]])
+    return cv2.warpAffine(wide, M, (w + 2 * pad, h), flags=cv2.INTER_LINEAR)
+
+
 # Hershey draws 4 with a closed apex. This app draws it open-topped — the
 # diagonal and the stem never meet — and normalized cross-correlation matches
 # that shape to a 9 far better than to a closed 4, so every large 4 in both
@@ -101,9 +125,11 @@ def render_seed_glyphs() -> dict[str, np.ndarray]:
         fonts = _SUM_FONTS if d == 0 else _SEED_FONTS + _SUM_FONTS[len(_SEED_FONTS):]
         for font in fonts:
             for scale, thick in _SUM_SCALES:
-                norm = normalize_glyph(_render_digit(d, font, scale, thick))
-                if norm is not None:
-                    glyphs.append((norm * 255).astype(np.uint8))
+                canvas = _render_digit(d, font, scale, thick)
+                for shaped in (canvas, _italicise(canvas, _ITALIC_SHEAR)):
+                    norm = normalize_glyph(shaped)
+                    if norm is not None:
+                        glyphs.append((norm * 255).astype(np.uint8))
         if d == 4:
             glyphs += [(g * 255).astype(np.uint8) for g in _open_four_glyphs()]
         out[str(d)] = np.stack(glyphs)

@@ -196,12 +196,35 @@ def _cg(board):
 
 
 def test_cage_sum_two_cell_cage_of_four():
-    """The canonical case: two cells totalling 4 can only be {1,3}."""
+    """The canonical case: two cells totalling 4 can only be {1,3}.
+
+    The first thing to say about it is the bound — its partner can't go below 1,
+    so this cell can't go above 3 — which takes out six digits in one line.
+    """
     board = Board(cages=[Cage.of([(0, 0), (0, 1)], 4)])
     hint = T.cage_sum(board, _cg(board))
     assert hint.action == "eliminate"
     assert hint.cells == [(0, 0)]
-    assert hint.digits == [2, 4, 5, 6, 7, 8, 9]
+    assert hint.digits == [4, 5, 6, 7, 8, 9]
+    assert "must be at most 3" in hint.explanation
+
+
+def test_cage_sum_still_reaches_what_the_bound_cannot():
+    """The bound leaves 2 standing — only the no-repeat rule kills it.
+
+    A clearer first step is worth having only if the rest still follows, so once
+    the squeeze is applied the combination list must pick up the remainder.
+    """
+    board = Board(cages=[Cage.of([(0, 0), (0, 1)], 4)])
+    cg = _cg(board)
+    seen = []
+    while (hint := T.cage_sum(board, cg)) is not None and len(seen) < 10:
+        seen.append(hint)
+        cg = apply_to_candidates(board, cg, hint)
+
+    assert cg[(0, 0)] == cg[(0, 1)] == {1, 3}
+    by_repeat = [h for h in seen if "{13}" in h.explanation]
+    assert by_repeat and all(h.digits == [2] for h in by_repeat)
 
 
 def test_cage_sum_handles_a_partially_filled_cage():
@@ -211,7 +234,7 @@ def test_cage_sum_handles_a_partially_filled_cage():
     hint = T.cage_sum(board, _cg(board))
     assert hint.action == "eliminate"
     assert hint.cells == [(0, 1)]
-    assert hint.digits == [3, 6, 7, 8]
+    assert hint.digits == [6, 7, 8]
 
 
 def test_cage_sum_places_a_forced_digit():
@@ -226,10 +249,40 @@ def test_cage_sum_places_a_forced_digit():
 
 
 def test_cage_sum_explanation_names_cage_and_combinations():
-    board = Board(cages=[Cage.of([(0, 0), (0, 1)], 4)])
+    board = Board(cages=[Cage.of([(0, 0), (0, 1)], 17)])
+    board.set_value(3, 0, 9)
     hint = T.cage_sum(board, _cg(board))
-    assert "the 4-cage at r1c1" in hint.explanation
-    assert "{13}" in hint.explanation
+    assert "the 17-cage at r1c1" in hint.explanation
+    assert "{89}" in hint.explanation
+    assert hint.units == ["the 17-cage at r1c1"]
+
+
+def test_cage_sum_keeps_quiet_rather_than_listing_too_many_sets():
+    """A hint the player cannot check is worse than no hint.
+
+    An empty 5-cell cage totalling 25 has dozens of workable sets and no useful
+    bound, so there is nothing to say about it that a person could act on.
+    """
+    cells = [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4)]
+    board = Board(cages=[Cage.of(cells, 25)])
+    cg = _cg(board)
+    _, _, combos, _ = T._cage_options(board, cg, board.cages[0])
+    assert len(combos) > T.MAX_LISTED_COMBOS
+    assert T._squeezed_out(cells[0], cells, cg, 25) is None
+
+    assert T.cage_sum(board, cg) is None
+
+
+def test_cage_sum_offers_the_shortest_argument_first():
+    """Two cages both have something to say; the two-set one is the checkable one."""
+    tight = Cage.of([(0, 0), (0, 1)], 4)  # {13} only
+    loose = Cage.of([(4, 0), (4, 1), (4, 2), (4, 3)], 20)  # dozens of sets
+    board = Board(cages=[loose, tight])
+    cg = _cg(board)
+    for cell in loose.cells:  # leave the loose cage nothing a bound can catch
+        cg[cell] -= {1, 9}
+
+    hint = T.cage_sum(board, cg)
     assert hint.units == ["the 4-cage at r1c1"]
 
 

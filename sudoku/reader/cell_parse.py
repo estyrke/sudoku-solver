@@ -126,6 +126,27 @@ def parse_cell(
 # Fraction of ink pixels in a sub-cell required to count as a mark.
 _MARK_INK_THRESH = 0.04
 
+# A grid or cage line that survives the border crop shows up as a hairline: one or
+# two pixels thick and running most of the width of the cell. Spread across three
+# sub-cells it clears the ink threshold on its own, which is how the bottom-right
+# cell of a board — where the outer frame sits closest to the crop — picked up
+# phantom 7 and 9 marks. Counting ink by the pixel cannot tell that apart, so
+# hairlines are dropped before the count. The bound is a fraction of cell height so
+# it holds at either reader's warp size; the thinnest real mark is several times it.
+_MARK_MIN_THICK = 0.03
+
+
+def _without_hairlines(ink: np.ndarray) -> np.ndarray:
+    """``ink`` with every component too thin in either axis to be a digit removed."""
+    floor = max(2, int(round(_MARK_MIN_THICK * ink.shape[0])))
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
+    out = ink.copy()
+    for lab in range(1, n):
+        x, y, w, h, area = stats[lab]
+        if min(w, h) < floor or area < NOISE_MIN_AREA:
+            out[y : y + h, x : x + w][labels[y : y + h, x : x + w] == lab] = 0
+    return out
+
 
 def _positional_marks(
     ink: np.ndarray, band: tuple[float, float] = (0.0, 1.0)
@@ -142,6 +163,7 @@ def _positional_marks(
     grid has to be mapped onto that strip alone — splitting the full height into
     thirds there would report every mark one row too low.
     """
+    ink = _without_hairlines(ink)
     h, w = ink.shape
     top, bottom = band
     y_start, y_span = top * h, (bottom - top) * h

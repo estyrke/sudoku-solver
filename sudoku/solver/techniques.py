@@ -454,9 +454,72 @@ def _cage_options(board: Board, cg: CandGrid, cage: Cage):
     return empties, allowed, combos, remaining
 
 
-def _combo_list(combos: list[tuple[int, ...]], limit: int = 6) -> str:
-    shown = ", ".join("{" + "".join(str(d) for d in combo) + "}" for combo in combos[:limit])
-    return shown + (f" and {len(combos) - limit} more" if len(combos) > limit else "")
+def _combo_list(combos: list[tuple[int, ...]]) -> str:
+    return ", ".join("{" + "".join(str(d) for d in combo) + "}" for combo in combos)
+
+
+# The combination list is checked by hand — the player has to hold every set in
+# their head and confirm the digit really is absent from (or present in) all of
+# them. Past a handful that stops being an explanation and becomes an assertion:
+# "the only workable sets are {13579}, {13678}, {14569} and 17 more, so 2 cannot go
+# in r4c8" is impossible to verify, and impossible to act on if the reason it fires
+# is a mistyped pencil mark rather than a real deduction. So a cage whose reasoning
+# is longer than this is left alone: another technique speaks instead, or the hint
+# engine escalates past cage sums entirely.
+MAX_LISTED_COMBOS = 4
+
+
+def _reach(cells: list[Coord], cg: CandGrid) -> Optional[tuple[int, int]]:
+    """The loosest bounds on what ``cells`` can total between them.
+
+    Bounds the sum by the smallest and the largest distinct digits still pencilled
+    anywhere across the group. That is weaker than a true per-cell assignment — it
+    admits totals no real placement reaches — but it is only ever used to *prove* a
+    digit impossible, and a bound that admits too much never proves too much. It
+    buys a one-line argument the player can check against their own marks instead
+    of a list of sets they have to take on trust.
+    """
+    if not cells:
+        return None
+    pool = sorted(set().union(*(cg[cell] for cell in cells)))
+    if len(pool) < len(cells):
+        return None
+    k = len(cells)
+    return sum(pool[:k]), sum(pool[-k:])
+
+
+def _squeezed_out(
+    cell: Coord, empties: list[Coord], cg: CandGrid, remaining: int
+) -> Optional[tuple[list[int], str]]:
+    """Digits ``cell`` can't hold because of what the rest of the cage must total.
+
+    What the other cells can reach pins ``cell`` between two values, so a whole
+    run of digits falls at once — the elimination and its reason are the same
+    sentence.
+    """
+    others = [x for x in empties if x != cell]
+    bounds = _reach(others, cg)
+    if bounds is None:
+        return None
+    low, high = bounds
+    n = _cells_phrase(len(others))
+    too_small = sorted(d for d in cg[cell] if remaining - d > high)
+    if too_small:
+        return too_small, (
+            f"The other {n} can total at most {high}, so {cell_name(*cell)} "
+            f"must be at least {remaining - high}"
+        )
+    too_big = sorted(d for d in cg[cell] if remaining - d < low)
+    if too_big:
+        return too_big, (
+            f"The other {n} can total at least {low}, so {cell_name(*cell)} "
+            f"must be at most {remaining - low}"
+        )
+    return None
+
+
+def _cells_phrase(n: int) -> str:
+    return "cell" if n == 1 else f"{n} cells"
 
 
 def cage_sum(board: Board, cg: CandGrid) -> Optional[Hint]:
@@ -464,6 +527,11 @@ def cage_sum(board: Board, cg: CandGrid) -> Optional[Hint]:
 
     Purely about sum reachability — a cage's no-repeat rule is already handled
     by cage-mates being peers, so it never has to be re-derived here.
+
+    Cages are worked cheapest-first rather than in board order, and the wording
+    prefers a bound over a list of sets, because a hint nobody can follow is worse
+    than no hint: it leaves the player unable to tell a real deduction from a
+    consequence of one bad pencil mark.
     """
     if not board.cages:
         return None
@@ -472,9 +540,12 @@ def cage_sum(board: Board, cg: CandGrid) -> Optional[Hint]:
         options = _cage_options(board, cg, cage)
         if options is not None:
             analysed.append((cage, *options))
+    # Fewest sets to check first, then fewest cells — the shortest argument wins.
+    analysed.sort(key=lambda a: (len(a[3]), len(a[1])))
+    short = [a for a in analysed if len(a[3]) <= MAX_LISTED_COMBOS]
 
     # A cell only one digit can occupy is the stronger deduction, so look first.
-    for cage, empties, allowed, combos, remaining in analysed:
+    for cage, empties, allowed, combos, remaining in short:
         for cell in empties:
             if len(allowed[cell]) == 1 and len(cg[cell]) > 1:
                 d = next(iter(allowed[cell]))
@@ -487,13 +558,37 @@ def cage_sum(board: Board, cg: CandGrid) -> Optional[Hint]:
                     units=[_cage_label(cage)],
                     explanation=(
                         f"{_cage_label(cage)} needs {remaining} more across "
-                        f"{len(empties)} cells. The only workable sets are "
+                        f"{_cells_phrase(len(empties))}. The only workable sets are "
                         f"{_combo_list(combos)}, and every one of them puts {d} "
                         f"in {cell_name(*cell)}."
                     ),
                 )
 
+    # Digits the cage's arithmetic squeezes out are one line to check, so they beat
+    # any set list — even a set list from a cage with fewer combinations.
     for cage, empties, allowed, combos, remaining in analysed:
+        for cell in empties:
+            if not allowed[cell]:
+                continue
+            squeezed = _squeezed_out(cell, empties, cg, remaining)
+            if squeezed is None:
+                continue
+            gone, why = squeezed
+            return Hint(
+                technique="Cage sum",
+                level=3,
+                action="eliminate",
+                cells=[cell],
+                digits=gone,
+                units=[_cage_label(cage)],
+                explanation=(
+                    f"{_cage_label(cage)} needs {remaining} more across "
+                    f"{_cells_phrase(len(empties))}. {why} — "
+                    f"{', '.join(str(d) for d in gone)} cannot go there."
+                ),
+            )
+
+    for cage, empties, allowed, combos, remaining in short:
         for cell in empties:
             gone = sorted(cg[cell] - allowed[cell])
             if gone and allowed[cell]:
@@ -506,7 +601,7 @@ def cage_sum(board: Board, cg: CandGrid) -> Optional[Hint]:
                     units=[_cage_label(cage)],
                     explanation=(
                         f"{_cage_label(cage)} needs {remaining} more across "
-                        f"{len(empties)} cells. The only workable sets are "
+                        f"{_cells_phrase(len(empties))}. The only workable sets are "
                         f"{_combo_list(combos)}, so "
                         f"{', '.join(str(d) for d in gone)} cannot go in "
                         f"{cell_name(*cell)}."
