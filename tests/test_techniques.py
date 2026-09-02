@@ -544,3 +544,123 @@ def test_solve_with_techniques_terminates_despite_stale_marks():
     assert solved
     assert any(s.technique == "Impossible pencil mark" for s in steps)
     assert 5 not in final.cell(0, 2).pencil_marks
+
+
+# ---------------------------------------------------------------------------
+# Killer Sudoku: the 45-rule over bands, and over several cells at once
+# ---------------------------------------------------------------------------
+
+
+def _rows_one_and_two_but_one():
+    """Cages filling all of rows 1-2 except r1c9, none of them inside one row.
+
+    Seven vertical dominoes straddle the two rows and an L takes r1c8/r2c8/r2c9,
+    so no single row, column or box has a cage lying wholly inside it that leaves
+    exactly one cell over. Only the two-row band closes the arithmetic.
+    """
+    dominoes = [Cage.of([(0, c), (1, c)], 11) for c in range(7)]
+    return dominoes + [Cage.of([(0, 7), (1, 7), (1, 8)], 9)]
+
+
+def test_forty_five_rule_reads_a_two_row_band():
+    """77 + 9 = 86 across seventeen cells; two rows total 90, so r1c9 is 4."""
+    board = Board(cages=_rows_one_and_two_but_one())
+    hint = T.forty_five_rule(board, _cg(board))
+    assert hint is not None, "the band was not considered"
+    assert hint.technique == "45-rule (innie)"
+    assert hint.cells == [(0, 8)]
+    assert hint.digits == [4]
+    assert hint.units == ["rows 1-2"]
+    assert "90 − 86 = 4" in hint.explanation
+
+
+def test_a_single_unit_alone_would_have_found_nothing():
+    """The point of bands: every one of the nine rows, columns and boxes is
+    silent on this board, so without them the deduction is invisible."""
+    board = Board(cages=_rows_one_and_two_but_one())
+    cg = _cg(board)
+    for label, cells, total in T._spans(board):
+        if total != T.UNIT_TOTAL:
+            continue
+        for _, leftover, owed, _held in T._unaccounted(board, set(cells), total):
+            assert not (
+                len(leftover) == 1
+                and T._forty_five_placement(cg, next(iter(leftover)), owed)
+            ), f"{label} would have found it"
+
+
+def test_bands_stop_at_three_units():
+    labels = {label for label, _, _ in T._spans(Board(cages=[Cage.of([(0, 0), (0, 1)], 5)]))}
+    assert "rows 1-2" in labels and "rows 1-3" in labels
+    assert "columns 7-9" in labels
+    assert not any("1-4" in label for label in labels)
+
+
+def _row_one_leaving_two():
+    """Cages covering seven of row 1, totalling 28 — so r1c8 and r1c9 make 17."""
+    return [
+        Cage.of([(0, 0), (0, 1), (0, 2)], 6),
+        Cage.of([(0, 3), (0, 4)], 11),
+        Cage.of([(0, 5), (0, 6)], 11),
+    ]
+
+
+def test_forty_five_sets_squeezes_a_two_cell_leftover():
+    """Two cells owing 17 can only be 8 and 9, so nothing below 8 fits either."""
+    board = Board(cages=_row_one_leaving_two())
+    hint = T.forty_five_sets(board, _cg(board))
+    assert hint is not None
+    assert hint.technique == "45-rule (innie set)"
+    assert hint.action == "eliminate"
+    assert hint.cells == [(0, 7)]
+    assert hint.digits == [1, 2, 3, 4, 5, 6, 7]
+    assert "must be at least 8" in hint.explanation
+
+
+def test_forty_five_sets_places_when_only_one_leftover_is_still_empty():
+    """The set shrinks to a single cell as the others get filled in."""
+    board = Board(cages=_row_one_leaving_two())
+    board.set_value(0, 8, 9)
+    hint = T.forty_five_sets(board, _cg(board))
+    assert hint.action == "place"
+    assert hint.cells == [(0, 7)]
+    assert hint.digits == [8]
+    assert "leaving 8 for it" in hint.explanation
+
+
+def test_forty_five_sets_needs_the_leftovers_to_share_a_unit():
+    """The bound sums *distinct* digits. Cells that may repeat could total less
+    than it assumes, so the elimination would be unsound and is not offered."""
+    assert T._all_distinct([(0, 0), (0, 8)])          # same row
+    assert T._all_distinct([(0, 0), (8, 0)])          # same column
+    assert T._all_distinct([(0, 0), (1, 1), (2, 2)])  # same box
+    assert not T._all_distinct([(0, 0), (1, 3)])
+    assert not T._all_distinct([(0, 0), (4, 4), (8, 8)])
+
+
+def test_forty_five_sets_never_contradicts_a_known_solution():
+    """Soundness: SOLUTION satisfies every cage, so each of its digits is
+    possible. The set rule must never eliminate one, nor place against it."""
+    solution = Board.from_string(SOLUTION)
+    board = Board(Board.from_string(EASY).cells, _cages_from_solution())
+    cg = working_candidates(board)
+
+    for _ in range(300):
+        hint = T.forty_five_sets(board, cg)
+        if hint is None:
+            break
+        if hint.action == "place":
+            r, c = hint.cells[0]
+            assert hint.digits[0] == solution.value(r, c)
+            board.set_value(r, c, hint.digits[0])
+        else:
+            for r, c in hint.cells:
+                assert solution.value(r, c) not in hint.digits, (r, c, hint.digits)
+        apply_to_candidates(board, cg, hint)
+
+
+def test_forty_five_sets_is_the_last_resort():
+    names = [fn.__name__ for fn in T.TECHNIQUES]
+    assert names[-1] == "forty_five_sets"
+    assert names.index("forty_five_rule") < names.index("forty_five_sets")
+    assert names.index("naked_pair") < names.index("forty_five_sets")

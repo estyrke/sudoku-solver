@@ -624,6 +624,62 @@ def _covered(cages: list[Cage]) -> set[Coord]:
     return out
 
 
+# How many units a 45-rule span may cover. Two and three rows (or columns) are
+# where the rule earns its keep: a single row often has no cage lying wholly
+# inside it, while a band of two or three usually does, and the arithmetic closes
+# on a band exactly as it does on one unit. On the board that prompted this,
+# every single unit was silent and rows 1-2 immediately pinned a cell.
+MAX_BAND = 3
+
+
+def _spans(board: Board):
+    """``(label, cells, total)`` for every span the 45-rule can be applied to.
+
+    The nine rows, columns and boxes, plus runs of two and three adjacent rows or
+    columns. Adjacent only because that is where cages cluster: any set of whole
+    units is arithmetically valid, but scanning all of them costs far more and
+    finds almost nothing.
+    """
+    for label, cells in board.units():
+        yield label, set(cells), UNIT_TOTAL
+    for n in range(2, MAX_BAND + 1):
+        for start in range(9 - n + 1):
+            span = f"{start + 1}-{start + n}"
+            yield (
+                f"rows {span}",
+                {(r, c) for r in range(start, start + n) for c in range(9)},
+                UNIT_TOTAL * n,
+            )
+            yield (
+                f"columns {span}",
+                {(r, c) for c in range(start, start + n) for r in range(9)},
+                UNIT_TOTAL * n,
+            )
+
+
+def _unaccounted(board: Board, span: set[Coord], total: int):
+    """The cells a span's 45-rule arithmetic leaves over, and what they total.
+
+    Yields ``(kind, cells, owed, cages_total)``: the *innies* are the span's cells
+    no cage inside it covers, and the *outies* are the cells outside it that the
+    cages meeting it spill onto. ``cages_total`` is carried so the explanation can
+    show the subtraction rather than assert its result.
+    """
+    inside = [cage for cage in board.cages if cage.cells <= span]
+    innies = span - _covered(inside)
+    if innies:
+        held = sum(cage.sum for cage in inside)
+        yield "innie", innies, total - held, held
+
+    touching = [cage for cage in board.cages if cage.cells & span]
+    reach = _covered(touching)
+    if span <= reach:  # otherwise part of the span is uncaged and nothing closes
+        outies = reach - span
+        if outies:
+            held = sum(cage.sum for cage in touching)
+            yield "outie", outies, held - total, held
+
+
 def _forty_five_placement(
     cg: CandGrid, cell: Coord, value: int
 ) -> bool:
@@ -640,69 +696,138 @@ def forty_five_rule(board: Board, cg: CandGrid) -> Optional[Hint]:
 
     Two arithmetic shapes, both from "every unit totals 45":
 
-    *Innie* — the cages lying wholly inside a unit cover all but one of its
-    cells, so that cell holds ``45 - (those cages' total)``.
+    *Innie* — the cages lying wholly inside a span cover all but one of its
+    cells, so that cell holds ``total - (those cages' sum)``.
 
-    *Outie* — the cages meeting a unit cover it entirely and spill outside it by
-    exactly one cell, so that cell holds ``(their total) - 45``.
+    *Outie* — the cages meeting a span cover it entirely and spill outside it by
+    exactly one cell, so that cell holds ``(their sum) - total``.
 
-    Only the single-cell case; when two or more cells are unaccounted for the
-    difference constrains a set rather than pinning a value, which is a
-    deliberate follow-up.
+    Applied to runs of up to three rows or columns as well as to single units;
+    see ``_spans``. When more than one cell is left over the difference
+    constrains a set rather than pinning a value — that is ``forty_five_sets``,
+    which is a harder read and sits much later in the catalog.
     """
     if not board.cages:
         return None
 
-    for label, cells in board.units():
-        unit = set(cells)
+    for label, span, total in _spans(board):
+        for kind, cells, owed, held in _unaccounted(board, span, total):
+            if len(cells) != 1:
+                continue
+            cell = next(iter(cells))
+            if not _forty_five_placement(cg, cell, owed):
+                continue
+            name = cell_name(*cell)
+            why = (
+                f"The cages wholly inside {label} total {held} and cover all "
+                f"but {name}. {label} must total {total}, so {name} is "
+                f"{total} \u2212 {held} = {owed}."
+                if kind == "innie"
+                else f"The cages meeting {label} total {held} and cover it "
+                f"entirely, sticking out only into {name}. {label} must total "
+                f"{total}, so {name} is {held} \u2212 {total} = {owed}."
+            )
+            return Hint(
+                technique=f"45-rule ({kind})",
+                level=4,
+                action="place",
+                cells=[cell],
+                digits=[owed],
+                units=[label],
+                explanation=why,
+            )
+    return None
 
-        # --- innie -------------------------------------------------------
-        inside = [cage for cage in board.cages if cage.cells <= unit]
-        rest = unit - _covered(inside)
-        if len(rest) == 1:
-            cell = next(iter(rest))
-            total = sum(cage.sum for cage in inside)
-            value = UNIT_TOTAL - total
-            if _forty_five_placement(cg, cell, value):
+
+# ---------------------------------------------------------------------------
+# Killer Sudoku: the 45-rule over several cells at once
+# ---------------------------------------------------------------------------
+
+# Beyond four the total says almost nothing: the reachable range is nearly the
+# whole of 1-9 for every cell, so the bound never bites and the work is wasted.
+MAX_LEFTOVER = 4
+
+
+def _all_distinct(cells: list[Coord]) -> bool:
+    """Whether these cells are guaranteed to hold different digits.
+
+    They are if they share a row, a column or a box. It matters because the bound
+    in ``_squeezed_out`` sums *distinct* digits: allow repeats and the true
+    minimum drops to k copies of the smallest, and the elimination is unsound.
+    Innies of a single unit always qualify; innies of a wider span and outies
+    often don't, and those are simply left alone.
+    """
+    return (
+        len({r for r, _ in cells}) == 1
+        or len({c for _, c in cells}) == 1
+        or len({box_index(r, c) for r, c in cells}) == 1
+    )
+
+
+def forty_five_sets(board: Board, cg: CandGrid) -> Optional[Hint]:
+    """Use the 45-rule when it leaves several cells over rather than one.
+
+    The leftover cells still have a known total, which is worth two things: if
+    every one but a single cell has since been filled in, that cell is pinned
+    after all; and while several are empty, what the others can reach bounds each
+    one — the same squeeze ``cage_sum`` applies within a cage, applied to a group
+    the cages don't draw.
+
+    Last in the catalog. It is the hardest of these to see by hand, and offering
+    it before a naked pair would be answering a question nobody asked.
+    """
+    if not board.cages:
+        return None
+
+    for label, span, total in _spans(board):
+        for kind, cells, owed, held in _unaccounted(board, span, total):
+            if not 2 <= len(cells) <= MAX_LEFTOVER:
+                continue
+            filled = [board.value(*cell) for cell in cells if board.value(*cell) is not None]
+            empties = sorted(cell for cell in cells if cell in cg)
+            if len(empties) + len(filled) != len(cells):
+                continue  # a cell that is neither empty-with-candidates nor filled
+            remaining = owed - sum(filled)
+            where = f"{'inside' if kind == 'innie' else 'spilling out of'} {label}"
+
+            if len(empties) == 1:
+                cell = empties[0]
+                if _forty_five_placement(cg, cell, remaining):
+                    return Hint(
+                        technique=f"45-rule ({kind} set)",
+                        level=7,
+                        action="place",
+                        cells=[cell],
+                        digits=[remaining],
+                        units=[label],
+                        explanation=(
+                            f"The {len(cells)} cells {where} must total {owed}, "
+                            f"and all but {cell_name(*cell)} are filled in — "
+                            f"leaving {remaining} for it."
+                        ),
+                    )
+                continue
+
+            if not _all_distinct(empties):
+                continue  # without distinctness the bound below would be unsound
+            for cell in empties:
+                squeezed = _squeezed_out(cell, empties, cg, remaining)
+                if squeezed is None:
+                    continue
+                gone, why = squeezed
                 return Hint(
-                    technique="45-rule (innie)",
-                    level=4,
-                    action="place",
+                    technique=f"45-rule ({kind} set)",
+                    level=7,
+                    action="eliminate",
                     cells=[cell],
-                    digits=[value],
+                    digits=gone,
                     units=[label],
                     explanation=(
-                        f"The cages wholly inside {label} total {total} and cover "
-                        f"all of it but {cell_name(*cell)}. Every unit totals "
-                        f"{UNIT_TOTAL}, so {cell_name(*cell)} must be "
-                        f"{UNIT_TOTAL} − {total} = {value}."
-                    ),
-                )
-
-        # --- outie -------------------------------------------------------
-        touching = [cage for cage in board.cages if cage.cells & unit]
-        reach = _covered(touching)
-        if not unit <= reach:
-            continue  # part of the unit is uncaged; the arithmetic won't close
-        outside = reach - unit
-        if len(outside) == 1:
-            cell = next(iter(outside))
-            total = sum(cage.sum for cage in touching)
-            value = total - UNIT_TOTAL
-            if _forty_five_placement(cg, cell, value):
-                return Hint(
-                    technique="45-rule (outie)",
-                    level=4,
-                    action="place",
-                    cells=[cell],
-                    digits=[value],
-                    units=[label],
-                    explanation=(
-                        f"The cages meeting {label} total {total} and cover it "
-                        f"entirely, sticking out only into {cell_name(*cell)}. "
-                        f"{label} itself accounts for {UNIT_TOTAL}, so "
-                        f"{cell_name(*cell)} must be {total} − {UNIT_TOTAL} = "
-                        f"{value}."
+                        f"{label} must total {total}, which leaves "
+                        f"{_names(sorted(cells))} {where} to make {owed}"
+                        + (f" — {remaining} once the filled ones are taken off" if filled else "")
+                        + f". {why} — {', '.join(str(d) for d in gone)} cannot go "
+                        f"there."
                     ),
                 )
     return None
@@ -724,4 +849,7 @@ TECHNIQUES = [
     pointing,
     claiming,
     x_wing,
+    # Last: the hardest of these to see by hand, and it only ever fires when
+    # everything simpler has already been exhausted.
+    forty_five_sets,
 ]

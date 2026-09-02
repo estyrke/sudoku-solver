@@ -44,14 +44,18 @@ Terms specific to the Killer variant. A board without any Cages is just classic 
 An orthogonally-contiguous (edge-adjacent, never diagonal) group of 2 or more cells carrying a target sum. Every cell on a Killer board belongs to exactly one Cage. The digits placed in a Cage's cells must all be different and must add up to its sum — but unlike a Unit, a Cage need not contain every digit 1-9. A cell's Cage-mates are its Peers — see Peer.
 _Avoid_: Region (the Queens context's term for a visually similar but differently-ruled grouping — a Region takes exactly one Queen, not a no-repeat digit set), block, group
 
+**Span**:
+One or more whole Units taken together, treated as a single target for the 45-rule: a single row, column or Box, or several adjacent rows or columns. Its digits total 45 per Unit it contains.
+_Avoid_: Region (reserved for the Queens context's irregular grouping — see Box), band, chute
+
 **45-rule**:
-The fact that every Unit's digits sum to 45 (1+2+...+9), used to derive an unknown value or difference by comparing a Box's fixed total against the sums of the Cages that cover it. See Innie, Outie.
+The fact that every Unit's digits sum to 45 (1+2+...+9), used to derive an unknown value or total by comparing a Span's fixed total against the sums of the Cages that cover it. See Innie, Outie.
 _Avoid_: Sum trick
 
 **Innie**:
-A cell that lies inside a Box but belongs to a Cage that extends outside the Box — one of the cells the 45-rule reasons over.
+A cell that lies inside a Span but belongs to a Cage that extends outside it — one of the cells the 45-rule reasons over. A Span may have several, in which case the rule fixes their combined total rather than any one value.
 _Avoid_: Overlap cell
 
 **Outie**:
-A cell that lies outside a Box but belongs to a Cage that extends inside the Box — the counterpart to Innie in a 45-rule deduction.
+A cell that lies outside a Span but belongs to a Cage that extends inside it — the counterpart to Innie in a 45-rule deduction, and likewise possibly several.
 _Avoid_: Overlap cell

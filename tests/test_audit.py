@@ -30,21 +30,30 @@ def test_a_clean_board_audits_clean(killer_board):
     assert report.cells == []
 
 
-def test_a_clean_board_is_why_no_technique_applies(killer_board):
-    """The situation that prompted this work: no hint, and nothing wrong.
+def test_the_audit_stays_clean_through_a_whole_solve(killer_board):
+    """A sound technique must never make the board look like a mistake.
 
-    Run the catalog to a standstill, which is what a player does by hand. That
-    combination — stuck and clean — is the only one that honestly means "needs a
-    technique we haven't written". The audit exists so the other causes can't
-    hide behind it.
+    The audit gates every hint, so a false accusation would be worse than the
+    silence it replaced: it would stop the engine dead on a board that is fine.
+    Walk the catalog from the read board to a finished one, auditing each step.
     """
-    from sudoku.solver.hint import find_hint, solve_with_techniques
+    from sudoku.solver.hint import apply_to_candidates, find_hint, working_candidates
 
-    stuck, steps, solved = solve_with_techniques(killer_board)
-    assert steps, "expected the catalog to make some progress first"
-    assert not solved, "this board is meant to outrun the current techniques"
-    assert find_hint(stuck) is None
-    assert audit(stuck).clean
+    work = _copy(killer_board)
+    cg = working_candidates(work)
+    steps = 0
+    while (hint := find_hint(work, cg)) is not None and steps < 500:
+        steps += 1
+        if hint.action == "place":
+            work.set_value(*hint.cells[0], hint.digits[0])
+        else:
+            for cell in hint.cells:
+                work.cell(*cell).pencil_marks -= set(hint.digits)
+        apply_to_candidates(work, cg, hint)
+        report = audit(work)
+        assert report.clean, f"step {steps} ({hint.technique}): {report.message}"
+
+    assert work.is_solved(), f"stalled after {steps} steps"
 
 
 def test_a_wrong_entry_is_named(killer_board):
