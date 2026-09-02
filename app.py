@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from sudoku.model import Board
+from sudoku.solver.audit import audit
 from sudoku.solver.hint import find_hint, solve
 
 from queens.model import Board as QueensBoard
@@ -242,42 +243,48 @@ def killer_solve_endpoint(data: KillerBoardModel) -> dict:
     board = _killer_board_from_model(data)
     solved = solve(board)
     if solved is None:
-        return {
-            "ok": False,
-            "reason": "No solution exists for this board — check the cage sums.",
-        }
+        # "No solution exists — check the cage sums" was the old answer, and it
+        # sent people to the cages when the culprit was usually a digit they'd
+        # entered. The audit says which.
+        report = audit(board)
+        return {"ok": False, "reason": report.message, "audit": report.to_dict()}
     return {"ok": True, "board": solved.to_dict()}
 
 
 @app.post("/killer/hint")
 def killer_hint_endpoint(data: KillerBoardModel) -> dict:
-    """Killer hints run the same escalating technique list as classic Sudoku.
+    """Killer hints run the same escalating technique list as classic Sudoku,
+    with the cage-sum and 45-rule techniques slotted into it.
 
-    Cage no-repeat already constrains candidates (cage-mates are peers), so
-    these hints are sound on a Killer board today; the cage-*sum* techniques
-    land in issues #12 and #13 and slot into the same list.
+    When nothing applies the board is audited rather than shrugged at: "no
+    technique applies" is the right answer only when the board is actually clean.
     """
     board = _killer_board_from_model(data)
-    if not board.is_valid():
-        return {
-            "ok": False,
-            "reason": "The board is invalid — a digit repeats in a unit or a cage, "
-            "or a cage can no longer reach its sum.",
-        }
     if board.is_solved():
         return {"ok": False, "reason": "This board is already solved. 🎉"}
+
+    # Audit before hinting, not after. A hint deduced from a wrong entry or in a
+    # world where a needed pencil mark has been rubbed out is worse than no hint:
+    # it looks authoritative and sends the player further off. "incomplete" is not
+    # a mistake, just a board still being drawn, so it doesn't block anything.
+    report = audit(board)
+    if not report.clean and report.verdict != "incomplete":
+        return {"ok": False, "reason": report.message, "audit": report.to_dict()}
+
     hint = find_hint(board)
-    if hint is None:
+    if hint is not None:
         return {
-            "ok": False,
-            "reason": "No technique in the current set applies. The board may need a "
-            "more advanced strategy than is implemented yet.",
+            "ok": True,
+            "nudge": _nudge(hint),
+            "technique": hint.technique,
+            "hint": hint.to_dict(),
+            "audit": report.to_dict(),
         }
     return {
-        "ok": True,
-        "nudge": _nudge(hint),
-        "technique": hint.technique,
-        "hint": hint.to_dict(),
+        "ok": False,
+        "reason": "No mistakes on the board — this one needs a technique that "
+        "isn't implemented yet.",
+        "audit": report.to_dict(),
     }
 
 

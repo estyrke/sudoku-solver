@@ -27,6 +27,7 @@
   let unsure = new Set(); // anchors whose sum the reader flagged as doubtful
   let currentHint = null; // {hint, nudge, technique}
   let revealLevel = 0;
+  let mistakes = []; // "r,c" keys the last audit flagged as wrong
 
   function blankCells() {
     return Array.from({ length: N * N }, () => ({ value: null, marks: [] }));
@@ -196,6 +197,7 @@
       el.classList.add("uncaged");
     }
 
+    if (mistakes.includes(key(r, c))) el.classList.add("mistake");
     if (dragging && dragging.has(key(r, c))) el.classList.add("dragging");
     if (mode === "digits" && selected && selected.r === r && selected.c === c)
       el.classList.add("sel");
@@ -396,6 +398,7 @@
   function clearHint() {
     currentHint = null;
     revealLevel = 0;
+    mistakes = [];
     if (!hintEl) return;
     revealEl.hidden = true;
     hintEl.className = "hint empty";
@@ -411,9 +414,13 @@
         currentHint = null;
         revealEl.hidden = true;
         hintEl.textContent = data.reason;
+        // A mistake report names cells; point at them the way a hint does, since
+        // "r1c1 is wrong" is only useful once you've found r1c1.
+        mistakes = (data.audit?.cells || []).map((m) => key(m.r, m.c));
         render();
         return;
       }
+      mistakes = [];
       currentHint = data;
       revealLevel = 1;
       revealEl.hidden = false;

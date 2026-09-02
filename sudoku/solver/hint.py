@@ -111,15 +111,27 @@ def solve_with_techniques(board: Board) -> tuple[Board, list[Hint], bool]:
 
 def solve(board: Board) -> Optional[Board]:
     """Backtracking solver. Returns a solved copy, or ``None`` if unsolvable."""
+    found = solutions(board, limit=1)
+    return found[0] if found else None
+
+
+def solutions(board: Board, limit: int = 2) -> list[Board]:
+    """Up to ``limit`` distinct solved copies of ``board``.
+
+    A limit of 2 answers "is this puzzle still uniquely determined?" without
+    paying to enumerate a board that has thousands of answers — which is what a
+    misread cage sum tends to produce, and what makes it unsafe to tell a player
+    their pencil marks are missing something.
+    """
     work = Board.from_dict(board.to_dict())
     if not work.is_valid():
-        return None
-    if _backtrack(work):
-        return work
-    return None
+        return []
+    found: list[Board] = []
+    _backtrack(work, found, limit)
+    return found
 
 
-def _backtrack(board: Board) -> bool:
+def _backtrack(board: Board, found: list[Board], limit: int) -> bool:
     """Depth-first search with cage-sum propagation.
 
     Two things made the straightforward version unusable on a real Killer board.
@@ -192,8 +204,10 @@ def _backtrack(board: Board) -> bool:
             return False
 
     def step() -> bool:
+        """True once ``limit`` solutions are in hand; keep searching until then."""
         if not cands:
-            return True
+            found.append(Board.from_dict(board.to_dict()))
+            return len(found) >= limit
         cell = min(cands, key=lambda x: len(cands[x]))
         i = cage_of.get(cell)
         for d in sorted(cands[cell]):
