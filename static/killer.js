@@ -25,6 +25,8 @@
   let selectedCage = null; // index into `cages` in cages mode
   let dragging = null; // Set of "r,c" keys while dragging
   let unsure = new Set(); // anchors whose sum the reader flagged as doubtful
+  let currentHint = null; // {hint, nudge, technique}
+  let revealLevel = 0;
 
   function blankCells() {
     return Array.from({ length: N * N }, () => ({ value: null, marks: [] }));
@@ -102,6 +104,7 @@
   // ---- rendering ---------------------------------------------------------
 
   let boardEl, statusEl, resultEl, sumRow, sumInput, sumLabel, deleteBtn, totalsEl;
+  let hintEl, revealEl;
 
   function render() {
     boardEl.innerHTML = "";
@@ -110,6 +113,7 @@
         boardEl.appendChild(renderCell(r, c));
       }
     }
+    markHintTargets();
     renderCageEditor();
     renderTotals();
   }
@@ -209,6 +213,7 @@
       m.className = "marks";
       for (let d = 1; d <= 9; d++) {
         const s = document.createElement("span");
+        s.dataset.d = d;
         s.textContent = cell.marks.includes(d) ? d : "";
         m.appendChild(s);
       }
@@ -319,6 +324,7 @@
         ? cell.marks.filter((m) => m !== d)
         : [...cell.marks, d];
     }
+    clearHint();
     render();
   }
 
@@ -327,6 +333,7 @@
     const cell = cells[idx(selected.r, selected.c)];
     cell.value = null;
     cell.marks = [];
+    clearHint();
     render();
   }
 
@@ -380,17 +387,72 @@
     }
   }
 
+  // ---- hints ---------------------------------------------------------------
+
+  // Killer hints are the ones that most need their reasoning shown: "look at the
+  // 32-cage at r4c8" is not something a player can act on, and unlike a classic
+  // single they usually can't reconstruct the argument themselves. Same three
+  // levels as the other two tabs, so nobody is forced past a nudge to get one.
+  function clearHint() {
+    currentHint = null;
+    revealLevel = 0;
+    if (!hintEl) return;
+    revealEl.hidden = true;
+    hintEl.className = "hint empty";
+    hintEl.textContent = "No hint yet.";
+  }
+
   async function doHint() {
-    const hintEl = document.getElementById("kHint");
+    hintEl.className = "hint";
     hintEl.textContent = "Thinking…";
-    hintEl.classList.remove("empty");
     try {
       const data = await post("/killer/hint");
-      hintEl.textContent = data.ok
-        ? `${data.nudge} (${data.technique})`
-        : data.reason;
+      if (!data.ok) {
+        currentHint = null;
+        revealEl.hidden = true;
+        hintEl.textContent = data.reason;
+        render();
+        return;
+      }
+      currentHint = data;
+      revealLevel = 1;
+      revealEl.hidden = false;
+      renderHint();
     } catch (err) {
+      currentHint = null;
+      revealEl.hidden = true;
       hintEl.textContent = err.message;
+    }
+  }
+
+  function renderHint() {
+    if (!currentHint) return;
+    const { nudge, technique, hint } = currentHint;
+    let html = "";
+    if (revealLevel >= 1) html += `<div>${nudge}</div>`;
+    if (revealLevel >= 2) html += `<div class="tech">${technique}</div>`;
+    if (revealLevel >= 3) html += `<div>${hint.explanation}</div>`;
+    hintEl.className = "hint";
+    hintEl.innerHTML = html;
+    revealEl.querySelectorAll("button").forEach((b) =>
+      b.classList.toggle("active", Number(b.dataset.level) === revealLevel)
+    );
+    render();
+  }
+
+  // At full reveal, point at the cells on the board too — a cage is named by its
+  // anchor, and finding r4c8 by counting rows is its own small chore.
+  function markHintTargets() {
+    if (!currentHint || revealLevel < 3) return;
+    const h = currentHint.hint;
+    for (const { r, c } of h.cells) {
+      const el = boardEl.children[idx(r, c)];
+      if (!el) continue;
+      el.classList.add("target");
+      if (h.action !== "eliminate") continue;
+      el.querySelectorAll(".marks span").forEach((s) => {
+        if (h.digits.includes(Number(s.dataset.d))) s.classList.add("hot");
+      });
     }
   }
 
@@ -419,6 +481,7 @@
       unsure = new Set((data.unsure || []).map((u) => key(u.r, u.c)));
       selected = null;
       selectedCage = null;
+      clearHint();
 
       const notes = [`Read ${cages.length} cages.`];
       if (!data.fully_caged)
@@ -482,6 +545,8 @@
     sumLabel = panel.querySelector("#kSumLabel");
     deleteBtn = panel.querySelector("#kDeleteCage");
     totalsEl = panel.querySelector("#kTotals");
+    hintEl = panel.querySelector("#kHint");
+    revealEl = panel.querySelector("#kReveal");
 
     reset();
 
@@ -543,6 +608,7 @@
       cage.sum = total;
       unsure.delete(key(...cageAnchor(cage)));
       setStatus(`Cage sum updated to ${total}.`);
+      clearHint();
       render();
     });
 
@@ -551,18 +617,25 @@
       cages.splice(selectedCage, 1);
       selectedCage = null;
       setStatus("Cage deleted.");
+      clearHint();
       render();
     });
 
     wireImport(panel);
     panel.querySelector("#kSolve").addEventListener("click", doSolve);
     panel.querySelector("#kGetHint").addEventListener("click", doHint);
+    revealEl.querySelectorAll("button").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        revealLevel = Number(btn.dataset.level);
+        renderHint();
+      })
+    );
     panel.querySelector("#kClear").addEventListener("click", () => {
       reset();
       setStatus("Board cleared.");
       resultEl.textContent = "No solve yet.";
       resultEl.classList.add("empty");
-      render();
+      clearHint();
     });
 
     document.addEventListener("keydown", (ev) => {
