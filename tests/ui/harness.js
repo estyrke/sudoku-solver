@@ -44,18 +44,25 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
  * @param {object[]} [opts.tabs]   extra puzzle types to register before mount,
  *                                 for exercising tab switching without pulling
  *                                 in a real second puzzle module
+ * @param {string[]} [opts.scripts] which modules to load, in order — the order
+ *                                 decides which tab opens first
+ * @param {string}   [opts.url]    the page's address, for query-string paths
+ * @param {Function} [opts.setUp]  runs against the window after the modules are
+ *                                 evalled but before anything mounts, for
+ *                                 planting browser APIs jsdom does not have
  */
-async function boot({ fetch, tabs = [] } = {}) {
+async function boot({ fetch, tabs = [], scripts = MODULES, url, setUp } = {}) {
   const dom = new JSDOM(fs.readFileSync(path.join(ROOT, "static/index.html"), "utf8"),
-                        { runScripts: "outside-only", pretendToBeVisual: true });
+                        { runScripts: "outside-only", pretendToBeVisual: true, url });
   const { window } = dom;
   const { document } = window;
 
   if (fetch) window.fetch = fetch;
-  for (const file of MODULES) {
+  for (const file of scripts) {
     window.eval(fs.readFileSync(path.join(ROOT, "static", file), "utf8"));
   }
   for (const tab of tabs) window.PuzzleShell.register(tab);
+  if (setUp) setUp(window);
 
   // The shell mounts on DOMContentLoaded. Wait for jsdom's own rather than
   // dispatching one: an extra event mounts a second time, which resets the

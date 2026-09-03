@@ -256,15 +256,32 @@
         dropStatus.textContent = data.detail || data.reason || "Could not read the image.";
         return;
       }
-      loadBoard(data.board);
-      panelEl.querySelector("#confirmRead").disabled = false;
-      const low = data.board.cells.filter((c) => c.low_confidence).length;
-      dropStatus.textContent = low
-        ? `Read board — ${low} cell(s) flagged low-confidence (outlined red). Please check them.`
-        : "Read board — please verify before requesting a hint.";
+      applyParsed(data);
     } catch (err) {
       dropStatus.textContent = "Upload failed: " + err.message;
     }
+  }
+
+  /** Put an already-parsed reading onto the board. Shared with the share target. */
+  function applyParsed(data) {
+    loadBoard(data.board);
+    panelEl.querySelector("#confirmRead").disabled = false;
+    const low = data.board.cells.filter((c) => c.low_confidence).length;
+    dropStatus.textContent = low
+      ? `Read board — ${low} cell(s) flagged low-confidence (outlined red). Please check them.`
+      : "Read board — please verify before requesting a hint.";
+  }
+
+  /**
+   * Adopt a screenshot the share target has already read.
+   *
+   * The file is kept, not just the reading: "Confirm reading" teaches the digit
+   * recognizer by re-extracting glyphs from the original image, so a shared
+   * board would silently lose the ability to learn from corrections without it.
+   */
+  function acceptShared(file, data) {
+    lastImageFile = file;
+    applyParsed(data);
   }
 
   async function confirmReading() {
@@ -344,5 +361,5 @@
     render();
   }
 
-  window.PuzzleShell.register({ id: "sudoku", label: "Sudoku", mount });
+  window.PuzzleShell.register({ id: "sudoku", label: "Sudoku", mount, acceptShared });
 })();

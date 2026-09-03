@@ -477,43 +477,62 @@
         statusEl.textContent = data.detail || `Could not read that image (${res.status}).`;
         return;
       }
-      cages = (data.board.cages || []).map((cage) => ({
-        cells: cage.cells.map((cell) => [cell.r, cell.c]),
-        sum: cage.sum,
-      }));
-      cells = data.board.cells.map((cell) => ({
-        value: cell.value,
-        marks: cell.pencil_marks || [],
-      }));
-      unsure = new Set((data.unsure || []).map((u) => key(u.r, u.c)));
-      selected = null;
-      selectedCage = null;
-      clearHint();
-
-      const notes = [`Read ${cages.length} cages.`];
-      if (!data.fully_caged)
-        notes.push("Some cells aren't in a cage — check the outlines.");
-      if (unsure.size)
-        notes.push(`${unsure.size} cage sum(s) look doubtful (highlighted).`);
-      // Cage sums must total 45 per unit. A mismatch means a sum was misread even
-      // when every individual read looked confident.
-      if (data.fully_caged && !data.checksum_ok) {
-        notes.push(
-          `Cage sums total ${data.sum_total}, but a full board must total 405 — ` +
-            `at least one sum is wrong.`
-        );
-      }
-      statusEl.textContent = notes.join(" ");
-      statusEl.classList.toggle("error", !!data.needs_review);
-      setStatus(
-        unsure.size
-          ? "Click a highlighted cage to correct its sum."
-          : "Board read. Check it over, then solve."
-      );
-      render();
+      applyParsed(data, statusEl);
     } catch (err) {
       statusEl.textContent = err.message;
     }
+  }
+
+  /**
+   * Put an already-parsed reading onto the board.
+   *
+   * Split out from the upload so a screenshot arriving from the Android share
+   * sheet lands here too. That path has the payload in hand before the tab is
+   * even in front (the share endpoint parses it to work out which puzzle it
+   * is), and it must not diverge from the dropped-file path: every warning
+   * below — uncaged cells, doubtful sums, the 405 checksum — matters just as
+   * much when the picture came from the share sheet.
+   */
+  function applyParsed(data, statusEl) {
+    cages = (data.board.cages || []).map((cage) => ({
+      cells: cage.cells.map((cell) => [cell.r, cell.c]),
+      sum: cage.sum,
+    }));
+    cells = data.board.cells.map((cell) => ({
+      value: cell.value,
+      marks: cell.pencil_marks || [],
+    }));
+    unsure = new Set((data.unsure || []).map((u) => key(u.r, u.c)));
+    selected = null;
+    selectedCage = null;
+    clearHint();
+
+    const notes = [`Read ${cages.length} cages.`];
+    if (!data.fully_caged)
+      notes.push("Some cells aren't in a cage — check the outlines.");
+    if (unsure.size)
+      notes.push(`${unsure.size} cage sum(s) look doubtful (highlighted).`);
+    // Cage sums must total 45 per unit. A mismatch means a sum was misread even
+    // when every individual read looked confident.
+    if (data.fully_caged && !data.checksum_ok) {
+      notes.push(
+        `Cage sums total ${data.sum_total}, but a full board must total 405 — ` +
+          `at least one sum is wrong.`
+      );
+    }
+    statusEl.textContent = notes.join(" ");
+    statusEl.classList.toggle("error", !!data.needs_review);
+    setStatus(
+      unsure.size
+        ? "Click a highlighted cage to correct its sum."
+        : "Board read. Check it over, then solve."
+    );
+    render();
+  }
+
+  /** Adopt a screenshot the share target has already read. */
+  function acceptShared(file, data) {
+    applyParsed(data, document.getElementById("kDropStatus"));
   }
 
   function wireImport(panel) {
@@ -656,5 +675,5 @@
     render();
   }
 
-  window.PuzzleShell.register({ id: "killer", label: "Killer", mount });
+  window.PuzzleShell.register({ id: "killer", label: "Killer", mount, acceptShared });
 })();

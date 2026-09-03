@@ -73,6 +73,13 @@
     if (registry.length) activate(registry[0].id);
   }
 
-  window.PuzzleShell = { register };
+  // `activate` and `get` are exported for the share handoff, which has to bring
+  // a tab to the front and hand it a screenshot without the user having clicked
+  // anything (see pwa.js).
+  window.PuzzleShell = {
+    register,
+    activate,
+    get: (id) => registry.find((puzzle) => puzzle.id === id) || null,
+  };
   document.addEventListener("DOMContentLoaded", init);
 })();

@@ -30,6 +30,21 @@ Open http://127.0.0.1:8000.
 
 You can also skip images entirely and enter a board by hand.
 
+## On Android: share a screenshot straight into the app
+
+1. Open the site in Chrome and choose **Install app** (or *Add to Home screen*) from
+   the menu. This step is not optional — Android registers the share target when the
+   app is installed, so a bookmark or an open tab will not appear in the share sheet.
+2. Screenshot a puzzle, tap **Share**, and pick **Puzzle Helper**.
+
+The board opens on the right tab: the app reads the screenshot and looks for cage
+outlines, sending it to *Killer* if it finds them and *Sudoku* if it doesn't.
+
+Android only — iOS Safari doesn't implement share targets, and nor does Firefox for
+Android. If you add the app to your home screen from one of those, everything else
+still works; only sharing is missing. See
+`docs/adr/0003-share-target-hands-off-through-a-service-worker.md`.
+
 ## How it works
 
 | Layer | Where | What |
@@ -38,6 +53,9 @@ You can also skip images entirely and enter a board by hand.
 | Hint engine | `sudoku/solver/` | escalating techniques + `find_hint` (simplest first) |
 | CV reader | `sudoku/reader/` | grid detection → cell parsing → template-matched digits |
 | Web app | `app.py`, `static/` | `/parse`, `/hint`, `/confirm`, `/solve` + the board UI |
+| PWA shell | `static/manifest.webmanifest`, `sw.js`, `pwa.js` | installability + the Android share target |
+
+Icons are drawn by `python -m tools.make_icons`; the PNGs it writes are what ship.
 
 ### Hint techniques (simplest → hardest)
 Naked single → hidden single → naked pair/triple → hidden pair → naked quad →

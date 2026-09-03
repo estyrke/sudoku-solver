@@ -124,6 +124,33 @@ def index() -> FileResponse:
     return FileResponse(STATIC / "index.html")
 
 
+# The manifest and the service worker are served from the root rather than from
+# /static, where the rest of the front end lives. A worker's scope defaults to
+# the directory it is served from, so one at /static/sw.js could not intercept
+# the share POST to /share. The explicit media types matter too: a manifest
+# served as octet-stream is ignored, and with it the share target.
+@app.get("/manifest.webmanifest")
+def manifest() -> FileResponse:
+    return FileResponse(STATIC / "manifest.webmanifest", media_type="application/manifest+json")
+
+
+@app.get("/sw.js")
+def service_worker() -> FileResponse:
+    return FileResponse(STATIC / "sw.js", media_type="text/javascript")
+
+
+@app.get("/share")
+def share_landing() -> FileResponse:
+    """Where a share lands when the service worker did not intercept it.
+
+    The worker owns POST /share; this GET exists so that a browser without one
+    registered — or one whose worker was evicted — shows the app instead of a
+    404. The screenshot is lost in that case, which is the honest outcome: it
+    was never handed to the page.
+    """
+    return FileResponse(STATIC / "index.html")
+
+
 @app.post("/hint")
 def hint_endpoint(data: BoardModel) -> dict:
     board = _board_from_model(data)
@@ -288,9 +315,8 @@ def killer_hint_endpoint(data: KillerBoardModel) -> dict:
     }
 
 
-@app.post("/killer/parse")
-async def killer_parse_endpoint(image: UploadFile = File(...)) -> dict:
-    """Read a Killer board from a Puzzle Page screenshot.
+def _read_killer(raw: bytes) -> dict:
+    """The /killer/parse payload for ``raw``.
 
     ``unsure`` lists the cells whose cage sum was read doubtfully (or dropped as
     illegal), so the UI can point the user at what to check before solving.
@@ -302,7 +328,6 @@ async def killer_parse_endpoint(image: UploadFile = File(...)) -> dict:
             501,
             f"Image reading isn't available: {exc}. Install OpenCV (see requirements.txt).",
         )
-    raw = await image.read()
     try:
         read = read_killer_board_from_bytes(raw)
     except Exception as exc:
@@ -316,3 +341,40 @@ async def killer_parse_endpoint(image: UploadFile = File(...)) -> dict:
         "checksum_ok": read.checksum_ok,
         "needs_review": read.needs_review,
     }
+
+
+@app.post("/killer/parse")
+async def killer_parse_endpoint(image: UploadFile = File(...)) -> dict:
+    """Read a Killer board from a Puzzle Page screenshot."""
+    return _read_killer(await image.read())
+
+
+# A board with no cage outlines still yields the odd stray cage from grid
+# artefacts, but never a board's worth of them; a Killer board misread badly
+# enough to lose half its cages still finds far more than this. The gap between
+# the two is wide, so the threshold does not need to be finely judged — it only
+# needs to sit inside it.
+MIN_KILLER_CAGES = 5
+
+
+@app.post("/share/parse")
+async def share_parse_endpoint(image: UploadFile = File(...)) -> dict:
+    """Read a shared screenshot, working out which puzzle it is on the way.
+
+    The Android share sheet offers one target, but the app has two readers, so
+    something has to choose. Cage outlines are the tell, and counting them is
+    free: the Killer reader has to run first either way, and when the picture
+    turns out to be a classic board its answer is simply discarded.
+    """
+    raw = await image.read()
+    killer = _read_killer(raw)
+    if len(killer["board"].get("cages", [])) >= MIN_KILLER_CAGES:
+        return {"kind": "killer", **killer}
+
+    from sudoku.reader.read_board import read_board_from_bytes
+
+    try:
+        board = read_board_from_bytes(raw)
+    except Exception as exc:
+        raise HTTPException(422, f"Could not read a board from that image: {exc}")
+    return {"kind": "sudoku", "ok": True, "board": board.to_dict()}

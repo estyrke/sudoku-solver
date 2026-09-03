@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Sudoku Helper</title>
   <link rel="stylesheet" href="/static/style.css" />
+  <!-- Installable on Android, which is also what makes the app show up in the
+       share sheet: a share target is registered with the OS at install time. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#1565c0" />
+  <link rel="icon" href="/static/icons/icon-192.png" />
 </head>
 <body>
   <main>
@@ -165,5 +170,7 @@
   <script src="/static/sudoku.js"></script>
   <script src="/static/queens.js"></script>
   <script src="/static/killer.js"></script>
+  <!-- Last: the share handoff needs every puzzle type already registered. -->
+  <script src="/static/pwa.js"></script>
 </body>
 </html>
