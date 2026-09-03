@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push makes an in-flight run of the same branch irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Model, techniques, solver, audit and the CV reader. The reader's digit
+  # exemplars are baked into sudoku/reader/glyph_seeds.npz rather than rendered
+  # at import, precisely so this job agrees with a developer's macOS run —
+  # cv2.putText anti-aliases differently across platforms.
+  python:
+    name: Python tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q
+
+  # The browser modules under static/, driven headlessly through jsdom. Separate
+  # from the Python job because "the engine is wrong" and "the page never showed
+  # what the engine said" are different failures and should read differently.
+  ui:
+    name: UI tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tests/ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: tests/ui/package-lock.json
+      - run: npm ci
+      - run: node --test

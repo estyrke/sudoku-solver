@@ -54,12 +54,21 @@ exemplars live under `templates/<digit>/` and are git-ignored.
 ## Tests
 
 ```bash
-pytest
+pytest                                  # model, techniques, solver, reader
+npm --prefix tests/ui ci && npm --prefix tests/ui test   # the browser modules
 ```
 
-Covers the model, every technique (with synthetic candidate grids), an end-to-end
-solve consistent with a backtracking solver, and the CV pipeline against a
-synthetically rendered board.
+The Python suite covers the model, every technique (with synthetic candidate grids),
+an end-to-end solve consistent with a backtracking solver, the mistake audit, and the
+CV pipeline against real screenshots.
+
+The UI suite (`tests/ui/`) loads `static/index.html` under jsdom and drives the page
+with real events, asserting on what ends up in the DOM. It is deliberately separate:
+a correct engine and a correct API response are not enough if the page discards them,
+which is exactly how an unusable hint survived several rounds of fixes to the engine
+behind it. Requests are stubbed, so the suite needs no server and takes ~0.3s.
+
+Both run on every push and pull request — see `.github/workflows/ci.yml`.
 
 ## Tuning for your app
 

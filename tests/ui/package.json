@@ -1,0 +1,12 @@
+{
+  "name": "sudoku-solver-ui-tests",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Headless jsdom tests for the browser modules in static/. Node-only island in an otherwise Python project; nothing here ships.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "jsdom": "^30.0.1"
+  }
+}

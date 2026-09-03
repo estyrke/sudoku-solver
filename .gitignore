@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+node_modules/
 # learned digit exemplars are machine/app-specific
 templates/[1-9]/
 .vercel
