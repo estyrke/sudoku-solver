@@ -1,0 +1,17 @@
+{
+  // The browser modules only. The Node-side test harness lives in tests/ui and
+  // stays plain CommonJS JavaScript, so it is deliberately out of scope here.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "noEmit": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["web", "vite.config.ts"]
+}

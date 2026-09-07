@@ -52,10 +52,29 @@ still works; only sharing is missing. See
 | Board model | `sudoku/model.py` | grid, units/peers, candidate derivation, validity |
 | Hint engine | `sudoku/solver/` | escalating techniques + `find_hint` (simplest first) |
 | CV reader | `sudoku/reader/` | grid detection → cell parsing → template-matched digits |
-| Web app | `app.py`, `static/` | `/parse`, `/hint`, `/confirm`, `/solve` + the board UI |
-| PWA shell | `static/manifest.webmanifest`, `sw.js`, `pwa.js` | installability + the Android share target |
+| Web app | `app.py`, `web/` | `/parse`, `/hint`, `/confirm`, `/solve` + the board UI |
+| PWA shell | `static/manifest.webmanifest`, `static/sw.js`, `web/pwa.ts` | installability + the Android share target |
 
 Icons are drawn by `python -m tools.make_icons`; the PNGs it writes are what ship.
+
+### The front end build
+
+The browser modules are TypeScript in `web/`, compiled and bundled by Vite into
+`static/dist/`, which is what `static/index.html` loads:
+
+```bash
+npm ci
+npm run build       # web/*.ts -> static/dist/*.js
+npm run typecheck   # tsc --noEmit
+```
+
+`static/dist/` is committed, because the deploy serves the repo as it stands and
+has no Node step; CI rebuilds and fails if the committed bundle has drifted from
+the sources. The output is minified for asset size and cacheability only — not as
+obfuscation or a security measure, since minified JavaScript is trivially readable.
+
+`static/sw.js` stays hand-written JavaScript outside the bundle: it is served from
+the site root so its scope covers `/share`, and the browser loads it as a worker.
 
 ### Hint techniques (simplest → hardest)
 Naked single → hidden single → naked pair/triple → hidden pair → naked quad →
@@ -73,15 +92,18 @@ exemplars live under `templates/<digit>/` and are git-ignored.
 
 ```bash
 pytest                                  # model, techniques, solver, reader
-npm --prefix tests/ui ci && npm --prefix tests/ui test   # the browser modules
+npm ci && npm run typecheck && npm run build             # the browser modules
+npm --prefix tests/ui ci && npm --prefix tests/ui test   # the page, under jsdom
 ```
 
 The Python suite covers the model, every technique (with synthetic candidate grids),
 an end-to-end solve consistent with a backtracking solver, the mistake audit, and the
 CV pipeline against real screenshots.
 
-The UI suite (`tests/ui/`) loads `static/index.html` under jsdom and drives the page
-with real events, asserting on what ends up in the DOM. It is deliberately separate:
+The UI suite (`tests/ui/`) loads `static/index.html` under jsdom, imports the built
+modules from `static/dist/` and drives the page with real events, asserting on what
+ends up in the DOM. It runs against the shipped bundle, so it needs `npm run build`
+first. It is deliberately separate:
 a correct engine and a correct API response are not enough if the page discards them,
 which is exactly how an unusable hint survived several rounds of fixes to the engine
 behind it. Requests are stubbed, so the suite needs no server and takes ~0.3s.

@@ -28,21 +28,31 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: pytest -q
 
-  # The browser modules under static/, driven headlessly through jsdom. Separate
-  # from the Python job because "the engine is wrong" and "the page never showed
-  # what the engine said" are different failures and should read differently.
+  # The browser modules: typechecked, built, then driven headlessly through
+  # jsdom. Separate from the Python job because "the engine is wrong" and "the
+  # page never showed what the engine said" are different failures and should
+  # read differently.
   ui:
     name: UI tests
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: tests/ui
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: tests/ui/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            tests/ui/package-lock.json
       - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      # static/dist is committed because the deploy has no Node step: what is in
+      # the repo is what gets served. A build that changes it means the sources
+      # moved on without it.
+      - name: The committed bundle matches the sources
+        run: git diff --exit-code -- static/dist
+      - run: npm ci
+        working-directory: tests/ui
       - run: node --test
+        working-directory: tests/ui
