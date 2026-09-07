@@ -27,8 +27,13 @@
 // other only through `window.PuzzleShell`, never by importing one another,
 // which is why each module is its own bundle entry point.
 
-/** A reading the share target has already parsed, handed to a tab as-is. */
-export type SharedReading = Record<string, unknown> & { board: any };
+/**
+ * A reading the share target has already parsed, handed to a tab as-is.
+ *
+ * The shell deliberately knows nothing about its shape — only the tab that
+ * asked for it does — so a tab narrows it to its own reading type on arrival.
+ */
+export type SharedReading = Record<string, any>;
 
 export interface PuzzleType {
   id: string;

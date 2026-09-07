@@ -4,7 +4,7 @@ Sharing a screenshot into the app from Android's share sheet requires the Web Sh
 
 Two mechanisms were available. The server could own `POST /share` directly — natural here, since a FastAPI server already exists and already reads screenshots. Instead a service worker intercepts the POST, stashes the file in the Cache API, and redirects to `/?shared=1`, where ordinary page code picks it up.
 
-The deciding argument is that the screenshot then travels the *same* path a dropped or pasted one travels. `static/killer.js` already knew how to take a parsed reading and render it, warnings and all — uncaged cells, doubtful sums, the 405 checksum mismatch. The server-side alternative would have had to render a page with the board already loaded, and with it a second copy of that reporting, which would drift. What the two paths now share is a single `applyParsed`.
+The deciding argument is that the screenshot then travels the *same* path a dropped or pasted one travels. The Killer tab (`static/killer.js` at the time, now `web/killer.ts`) already knew how to take a parsed reading and render it, warnings and all — uncaged cells, doubtful sums, the 405 checksum mismatch. The server-side alternative would have had to render a page with the board already loaded, and with it a second copy of that reporting, which would drift. What the two paths now share is a single `applyParsed`.
 
 This also keeps the share path honest about failure: a screenshot that reads badly says so in the same words it would have said them in anyway.
 

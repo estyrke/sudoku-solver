@@ -5,6 +5,10 @@
 // (private to this module) so it lives for the lifetime of the page — the
 // shell only ever hides/shows the panel, never destroys it, which is what
 // keeps this tab's board state intact across tab switches.
+//
+// Browser APIs are reached through `window` (`window.fetch`, `window.FormData`,
+// `window.prompt`, …) rather than as bare globals, so the jsdom page harness can
+// substitute them per boot — see tests/ui/harness.js.
 
 import type { SharedReading } from "./shell";
 

@@ -10,6 +10,10 @@
 // Cage legality (2+ cells, orthogonally contiguous, reachable sum, no overlap)
 // is enforced by the model server-side; the checks here exist only to give
 // immediate feedback rather than to be the source of truth.
+//
+// Browser APIs are reached through `window` (`window.fetch`, `window.FormData`,
+// `window.prompt`, …) rather than as bare globals, so the jsdom page harness can
+// substitute them per boot — see tests/ui/harness.js.
 
 import type { SharedReading } from "./shell";
 
@@ -407,6 +411,9 @@ function toPayload() {
   };
 }
 
+// The replies differ per endpoint (a hint, a solved board, a refusal carrying an
+// audit), and this slice still takes them on trust from the server; the shapes
+// get types when the engine moves into the browser.
 async function post(url: string): Promise<any> {
   const res = await window.fetch(url, {
     method: "POST",
@@ -583,7 +590,7 @@ function applyParsed(data: ParsedReading, statusEl: HTMLElement): void {
 
 /** Adopt a screenshot the share target has already read. */
 function acceptShared(_file: File, data: SharedReading): void {
-  applyParsed(data as unknown as ParsedReading, document.getElementById("kDropStatus")!);
+  applyParsed(data as ParsedReading, document.getElementById("kDropStatus")!);
 }
 
 function wireImport(panel: HTMLElement): void {

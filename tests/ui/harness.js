@@ -32,11 +32,33 @@ const MODULES = ["shell.js", "killer.js"];
 
 let bootCount = 0;
 
-/** Resolve once the document has finished parsing, mounting every tab. */
-function domReady(document) {
-  if (document.readyState !== "loading") return Promise.resolve();
-  return new Promise((resolve) =>
-    document.addEventListener("DOMContentLoaded", resolve, { once: true }));
+/**
+ * Take DOMContentLoaded away from jsdom and give it to the caller.
+ *
+ * The shell mounts on DOMContentLoaded, and mounting twice resets the board out
+ * from under whatever the test just set up. jsdom finishes parsing on its own
+ * schedule, which may fall before, during or after the module imports — so
+ * rather than race it, swallow the event it dispatches and let the caller fire
+ * one itself, once, when every module is loaded and listening.
+ *
+ * Returns that dispatch. The suppressor sees the event first (capture phase,
+ * registered before any module listener) and stops it reaching the modules
+ * unless the returned dispatch is what sent it.
+ */
+function ownDomReady(window, document) {
+  let ours = false;
+  document.addEventListener(
+    "DOMContentLoaded",
+    (event) => {
+      if (!ours) event.stopImmediatePropagation();
+    },
+    true,
+  );
+  return () => {
+    ours = true;
+    document.dispatchEvent(new window.Event("DOMContentLoaded"));
+    ours = false;
+  };
 }
 
 /**
@@ -70,6 +92,9 @@ async function boot({ fetch, tabs = [], scripts = MODULES, url, setUp } = {}) {
 
   if (fetch) window.fetch = fetch;
 
+  // Registered before the imports, so it is ahead of every module listener.
+  const mountTabs = ownDomReady(window, document);
+
   // The modules are written against the browser's globals. Point them at this
   // boot's window for the duration; they read `window` and `document` when a
   // handler runs rather than only at import, so these stay pointed here until
@@ -86,13 +111,8 @@ async function boot({ fetch, tabs = [], scripts = MODULES, url, setUp } = {}) {
   for (const tab of tabs) window.PuzzleShell.register(tab);
   if (setUp) setUp(window);
 
-  // The shell mounts on DOMContentLoaded. Prefer jsdom's own rather than
-  // dispatching one: an extra event mounts a second time, which resets the
-  // board out from under whatever the test just set up. Awaiting the imports
-  // can outlast jsdom's parse, though, in which case the event has been and
-  // gone before any module was listening — so dispatch it ourselves.
-  if (document.readyState === "loading") await domReady(document);
-  else document.dispatchEvent(new window.Event("DOMContentLoaded"));
+  // Everything is loaded and listening: mount the tabs, exactly once.
+  mountTabs();
 
   const panel = document.querySelector('[data-tab-panel="killer"]');
   const board = document.getElementById("kBoard");
