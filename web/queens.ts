@@ -4,6 +4,10 @@
 // Registers itself with the puzzle-type shell (see shell.ts) and mounts its UI
 // into the container the shell hands it. State is module-level (private to
 // this module) so it survives tab switches the same way sudoku.ts's does.
+//
+// Browser APIs are reached through `window` (`window.fetch`, `window.FormData`,
+// `window.prompt`, …) rather than as bare globals, so the jsdom page harness can
+// substitute them per boot — see tests/ui/harness.js.
 
 const DEFAULT_N = 8;
 const CLICK_DEBOUNCE_MS = 200; // let a dblclick cancel the leading click first

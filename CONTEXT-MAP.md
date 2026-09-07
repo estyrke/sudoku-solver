@@ -7,4 +7,4 @@
 
 ## Relationships
 
-- **Sudoku ↔ Queens**: no shared domain vocabulary or model. Both are puzzle types served by the same FastAPI app and static-JS shell (`app.py`, `static/`) via a puzzle-type switch — the sharing is at the web/UI layer only, not the domain layer.
+- **Sudoku ↔ Queens**: no shared domain vocabulary or model. Both are puzzle types served by the same FastAPI app and TypeScript browser shell (`app.py`, `web/`) via a puzzle-type switch — the sharing is at the web/UI layer only, not the domain layer.

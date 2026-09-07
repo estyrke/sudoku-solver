@@ -9,6 +9,10 @@
 // sw.js itself stays plain JavaScript: it is served from the site root so its
 // scope covers /share, and it is loaded by the browser as a worker rather than
 // by this bundle.
+//
+// Browser APIs are reached through `window` (`window.fetch`, `window.FormData`,
+// `window.prompt`, …) rather than as bare globals, so the jsdom page harness can
+// substitute them per boot — see tests/ui/harness.js.
 
 import type { SharedReading } from "./shell";
 

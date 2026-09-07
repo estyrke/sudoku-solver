@@ -51,7 +51,11 @@ jobs:
       # the repo is what gets served. A build that changes it means the sources
       # moved on without it.
       - name: The committed bundle matches the sources
-        run: git diff --exit-code -- static/dist
+        # --porcelain as well as diff: a build that emits a file name nobody has
+        # committed yet is untracked, and `git diff` would not see it.
+        run: |
+          git diff --exit-code -- static/dist
+          test -z "$(git status --porcelain -- static/dist)"
       - run: npm ci
         working-directory: tests/ui
       - run: node --test
