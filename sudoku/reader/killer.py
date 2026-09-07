@@ -168,17 +168,21 @@ def sum_store() -> TemplateStore:
     return store
 
 
-def _read_sum(
-    coloured: np.ndarray, r: int, c: int, store: TemplateStore
-) -> tuple[int | None, float]:
-    """The cage sum printed in cell ``(r, c)``, plus the weakest digit's NCC."""
+def _sum_glyph_crops(coloured: np.ndarray, r: int, c: int) -> list[np.ndarray]:
+    """The cage sum's individual digit glyphs in cell ``(r, c)``, left to right,
+    unclassified — ink-on-black crops ready for :meth:`TemplateStore.classify`.
+
+    Split out from :func:`_read_sum` so ``calibrate`` can pull real exemplars
+    from a reference screenshot the same way it does for the classic reader's
+    digits (see ``_open_four_glyphs``).
+    """
     y0, x0 = r * CELL, c * CELL
     band = coloured[
         y0 + int(SUM_TOP * CELL) : y0 + int(SUM_BOTTOM * CELL),
         x0 + int(SUM_LEFT * CELL) : x0 + int(SUM_RIGHT * CELL),
     ]
     if not band.size:
-        return None, 0.0
+        return []
     n, labels, stats, _ = cv2.connectedComponentsWithStats(band, 8)
     glyphs = []
     for i in range(1, n):
@@ -189,11 +193,19 @@ def _read_sum(
         if w < SUM_MIN_WIDTH * CELL or w / h < SUM_MIN_ASPECT:
             continue  # an outline sliver, not a digit
         glyphs.append((x, (labels[y : y + h, x : x + w] == i).astype(np.uint8) * 255))
+    return [glyph for _, glyph in sorted(glyphs, key=lambda t: t[0])]
+
+
+def _read_sum(
+    coloured: np.ndarray, r: int, c: int, store: TemplateStore
+) -> tuple[int | None, float]:
+    """The cage sum printed in cell ``(r, c)``, plus the weakest digit's NCC."""
+    glyphs = _sum_glyph_crops(coloured, r, c)
     if not glyphs:
         return None, 0.0
 
     digits, worst = [], 1.0
-    for _, glyph in sorted(glyphs, key=lambda t: t[0]):
+    for glyph in glyphs:
         digit, score = store.classify(glyph)
         if digit is None:
             return None, 0.0

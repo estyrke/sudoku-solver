@@ -87,6 +87,7 @@ from sudoku.solver.hint import solve
 FIXTURE = Path(__file__).parent / "fixtures" / "puzzle_page_killer_sample_board.png"
 FIXTURE2 = Path(__file__).parent / "fixtures" / "puzzle_page_killer_board2.png"
 FIXTURE3 = Path(__file__).parent / "fixtures" / "puzzle_page_killer_board3.png"
+FIXTURE4 = Path(__file__).parent / "fixtures" / "puzzle_page_killer_board4.png"
 
 
 def test_positional_marks_defaults_to_the_whole_cell():
@@ -179,9 +180,9 @@ def test_killer_reader_produces_a_usable_board():
 
 
 def test_killer_reader_checksum_is_clean_on_every_reference_board():
-    """All three reference screenshots read exactly, so the 9x45 checksum passes
+    """All four reference screenshots read exactly, so the 9x45 checksum passes
     and nothing is flagged for review."""
-    for path in (FIXTURE, FIXTURE2, FIXTURE3):
+    for path in (FIXTURE, FIXTURE2, FIXTURE3, FIXTURE4):
         read = read_killer_board(cv2.imread(str(path)))
         assert read.board.is_fully_caged(), path.name
         assert read.sum_total == 405, f"{path.name}: {read.sum_total}"
@@ -242,7 +243,7 @@ def test_every_reference_board_solves_quickly_end_to_end():
     """
     import time
 
-    for path in (FIXTURE, FIXTURE2, FIXTURE3):
+    for path in (FIXTURE, FIXTURE2, FIXTURE3, FIXTURE4):
         board = read_killer_board(cv2.imread(str(path))).board
         started = time.perf_counter()
         solved = solve(board)
@@ -284,6 +285,31 @@ def test_killer_reader_reads_the_apps_italic_one():
     ones = [(r, c) for r in range(9) for c in range(9) if board.value(r, c) == 1]
     assert ones == [(6, 7), (7, 0), (8, 3)], f"expected three 1s, got {ones}"
     assert not any(board.value(r, c) == 7 for r in range(9) for c in range(9))
+
+
+def test_killer_reader_handles_a_fourth_board_layout():
+    """Board #5241, 29 cages, every sum exact."""
+    read = read_killer_board(cv2.imread(str(FIXTURE4)))
+    assert len(read.board.cages) == 29
+    assert sum(len(c.cells) for c in read.board.cages) == 81
+    got = {min(c.cells): c.sum for c in read.board.cages}
+    assert got == {
+        (0,0):10,(0,2):21,(0,5):21,(0,6):9,(0,7):10,(1,0):10,(1,2):11,(1,8):20,
+        (2,0):12,(2,3):10,(2,5):15,(3,1):10,(3,4):12,(3,7):12,(4,0):22,(4,3):15,
+        (4,4):11,(4,5):9,(4,8):12,(5,1):15,(5,5):20,(5,6):4,(5,7):9,(6,0):17,
+        (6,3):17,(7,1):15,(7,6):16,(8,1):20,(8,6):20,
+    }
+
+
+def test_killer_reader_does_not_confuse_the_apps_six_for_a_five():
+    """Regression: Puzzle Page's cage-sum 6 is a tight loop under a small, high
+    top curl, which at ~16px cross-correlated to a Hershey 5 better than to a
+    Hershey 6 (0.845 to 0.834) -- the r8c7 16-cage of board #5241 misread as 15,
+    a mistake dishonest enough to look like a genuine player error rather than a
+    parse fault."""
+    read = read_killer_board(cv2.imread(str(FIXTURE4)))
+    by_anchor = {min(c.cells): c.sum for c in read.board.cages}
+    assert by_anchor[(7, 6)] == 16, "5/6 confusion is back"
 
 
 def test_killer_reader_reads_every_placed_digit_of_the_third_board():

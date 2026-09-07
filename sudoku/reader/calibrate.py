@@ -30,8 +30,17 @@ _SUM_SCALES = ((1.6, 2), (1.9, 3), (1.4, 3), (1.6, 4), (1.8, 5), (2.0, 6))
 # anti-aliasing does not rasterise identically across platforms, and classifying
 # ~16px glyphs is sensitive enough that macOS and Linux disagreed on more than
 # half the cage sums of the same screenshot. Shipping the bitmaps makes the
-# reader deterministic wherever it runs. Regenerate with:
+# reader deterministic wherever it runs. Regenerate the whole file with:
 #     python -m sudoku.reader.calibrate
+#
+# That full regeneration is itself platform-sensitive, though — running it
+# re-renders every Hershey exemplar via `cv2.putText` on whatever machine you're
+# on, so it silently swaps in that machine's rasterisation for the one the file
+# shipped with. Confirmed on this repo: rebaking on macOS pushed all four
+# reference screenshots' checksums off 405. To add or replace one digit's real
+# exemplars (as `_open_four_glyphs`/`_confusable_six_glyphs` do), instead load
+# `seed_glyphs()`, splice in the new array for that digit only, and
+# `np.savez_compressed` the result — leaving every other digit's bytes untouched.
 SEED_FILE = Path(__file__).with_name("glyph_seeds.npz")
 
 
@@ -117,6 +126,42 @@ def _open_four_glyphs() -> list[np.ndarray]:
     return out
 
 
+# Puzzle Page's cage-sum "6" is a tight loop under a small, high top curl — at
+# ~16px that reads structurally closer to a Hershey "5" than to a Hershey "6",
+# so board #5241's 16-cage misread as 15 (0.845 NCC to 5 against 0.834 to 6, a
+# margin fine enough that Hershey's rounder 6 lost). Pulling the app's own 6 out
+# of a reference screenshot, the same way the open-topped 4 was, settles it.
+_CONFUSABLE_SIX_SOURCE = (
+    Path(__file__).resolve().parents[2]
+    / "tests"
+    / "fixtures"
+    / "puzzle_page_killer_board4.png"
+)
+_CONFUSABLE_SIX_CELL = (7, 6)  # r8c7, cage sum "16" -- second glyph is the 6
+
+
+def _confusable_six_glyphs() -> list[np.ndarray]:
+    """Lift the app's cage-sum 6 out of the reference screenshot.
+
+    Imported lazily: this is regeneration-time only, and ``killer`` imports
+    this module.
+    """
+    from .killer import _ink_colour, _sum_glyph_crops, _warp_board
+
+    img = cv2.imread(str(_CONFUSABLE_SIX_SOURCE))
+    if img is None:  # pragma: no cover - only hit if the fixture goes missing
+        raise FileNotFoundError(f"missing reference screenshot: {_CONFUSABLE_SIX_SOURCE}")
+    board = _warp_board(img)
+    coloured = _ink_colour(board)
+    glyphs = _sum_glyph_crops(coloured, *_CONFUSABLE_SIX_CELL)
+    out = []
+    if len(glyphs) == 2:  # "1", "6"
+        norm = normalize_glyph(glyphs[1])
+        if norm is not None:
+            out.append(norm)
+    return out
+
+
 def render_seed_glyphs() -> dict[str, np.ndarray]:
     """Render every seed exemplar. Only used to (re)generate ``SEED_FILE``."""
     out: dict[str, np.ndarray] = {}
@@ -132,6 +177,8 @@ def render_seed_glyphs() -> dict[str, np.ndarray]:
                         glyphs.append((norm * 255).astype(np.uint8))
         if d == 4:
             glyphs += [(g * 255).astype(np.uint8) for g in _open_four_glyphs()]
+        if d == 6:
+            glyphs += [(g * 255).astype(np.uint8) for g in _confusable_six_glyphs()]
         out[str(d)] = np.stack(glyphs)
     return out
 
