@@ -166,11 +166,15 @@
       </div>
     </div>
   </main>
-  <script src="/static/shell.js"></script>
-  <script src="/static/sudoku.js"></script>
-  <script src="/static/queens.js"></script>
-  <script src="/static/killer.js"></script>
+  <!-- Built from web/*.ts by Vite; see vite.config.ts. Module scripts are
+       deferred and run in document order, so the shell still exists before the
+       puzzle types register into it, and DOMContentLoaded still fires after
+       all of them have loaded. -->
+  <script type="module" src="/static/dist/shell.js"></script>
+  <script type="module" src="/static/dist/sudoku.js"></script>
+  <script type="module" src="/static/dist/queens.js"></script>
+  <script type="module" src="/static/dist/killer.js"></script>
   <!-- Last: the share handoff needs every puzzle type already registered. -->
-  <script src="/static/pwa.js"></script>
+  <script type="module" src="/static/dist/pwa.js"></script>
 </body>
 </html>

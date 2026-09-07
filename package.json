@@ -1,0 +1,15 @@
+{
+  "name": "sudoku-solver-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "TypeScript front end for the puzzle helper. Vite compiles web/*.ts into static/dist/, which is what index.html loads and what the jsdom page tests import.",
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5"
+  }
+}
