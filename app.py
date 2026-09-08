@@ -151,29 +151,6 @@ def share_landing() -> FileResponse:
     return FileResponse(STATIC / "index.html")
 
 
-@app.post("/hint")
-def hint_endpoint(data: BoardModel) -> dict:
-    board = _board_from_model(data)
-    if not board.is_valid():
-        return {"ok": False, "reason": "The board is invalid — a digit repeats in a unit."}
-    if board.is_solved():
-        return {"ok": False, "reason": "This board is already solved. 🎉"}
-    hint = find_hint(board)
-    if hint is None:
-        return {
-            "ok": False,
-            "reason": "No technique in the current set applies. The board may need a "
-            "more advanced strategy than is implemented yet.",
-        }
-    # Progressive reveal levels: nudge -> technique name -> full reasoning.
-    return {
-        "ok": True,
-        "nudge": _nudge(hint),
-        "technique": hint.technique,
-        "hint": hint.to_dict(),
-    }
-
-
 @app.post("/parse")
 async def parse_endpoint(image: UploadFile = File(...)) -> dict:
     """Read a board from an uploaded screenshot. Wired to the CV reader, imported
