@@ -1,10 +1,9 @@
-// Backtracking solver — the TypeScript port of `solve` in sudoku/solver/hint.py.
+// Solver — the TypeScript port of `solve` in sudoku/solver/hint.py.
 //
-// This slice ports the backtracker alone, with no cage-sum propagation: that
-// optimization exists in Python because a Killer board's cages make the naive
-// search too slow, and Killer's Cage hasn't been ported yet (issue #21). A
-// classic board is small enough for plain backtracking to be instant, which
-// is exactly what the Python module's own docstring says about it.
+// Technique propagation first, backtracking for whatever is left. No cage-sum
+// propagation: that pruning exists in Python because a Killer board's cages
+// make the naive search too slow, and Killer's Cage hasn't been ported yet
+// (issue #21).
 //
 // Candidates are carried incrementally and undone on backtrack, same as the
 // Python version, rather than recomputed from the board at every node — it's
@@ -15,6 +14,7 @@
 // straight from source for tests/engine; Vite's bundler resolution accepts it
 // equally well when this file is bundled into the shipped sudoku tab.
 import { Board, N, rc } from "./model.ts";
+import { derivedCandidates, solveWithTechniques } from "./hint.ts";
 
 /** Depth-first search, choosing the cell with fewest candidates first (as Python's `min` does). */
 function backtrack(board: Board, cands: Map<number, Set<number>>, peersOf: Map<number, number[]>): boolean {
@@ -60,10 +60,25 @@ function backtrack(board: Board, cands: Map<number, Set<number>>, peersOf: Map<n
   return false;
 }
 
-/** Backtracking solver. Returns a solved copy, or `null` if unsolvable. */
+/**
+ * Solver. Returns a solved copy, or `null` if unsolvable.
+ *
+ * Human techniques run first and the backtracker picks up whatever they leave —
+ * on an easy board that is nothing at all, and the answer falls out of
+ * propagation alone. Propagation only ever removes candidates that no solution
+ * could have used, so the search that follows is the same search over a smaller
+ * tree, not a different one.
+ */
 export function solve(board: Board): Board | null {
-  const work = Board.fromWire(board.toWire());
+  let work = Board.fromWire(board.toWire());
   if (!work.isValid()) return null;
+
+  const run = solveWithTechniques(work, derivedCandidates(work));
+  // A board the techniques wreck (they cannot, given derived candidates, but a
+  // future technique with a bug could) is not allowed to make a solvable board
+  // look unsolvable: fall back to the untouched one.
+  if (run.board.isValid()) work = run.board;
+  if (work.isSolved()) return work;
 
   const cands = new Map<number, Set<number>>();
   for (let i = 0; i < N * N; i++) {

@@ -50,10 +50,10 @@ still works; only sharing is missing. See
 | Layer | Where | What |
 | --- | --- | --- |
 | Board model | `sudoku/model.py` | grid, units/peers, candidate derivation, validity |
-| Hint engine | `sudoku/solver/` | escalating techniques + `find_hint` (simplest first) |
+| Hint engine | `sudoku/solver/` | escalating techniques + `find_hint` (simplest first) — still serving Killer, whose port is issue #21 |
 | CV reader | `sudoku/reader/` | grid detection → cell parsing → template-matched digits |
-| Web app | `app.py`, `web/` | `/parse`, `/hint`, `/confirm` + the board UI |
-| Browser engine | `web/sudoku/` | classic board model + backtracking solve, ported to TypeScript — the Sudoku tab's **Solve** button runs this locally, no server round trip |
+| Web app | `app.py`, `web/` | `/parse`, `/confirm` + the board UI |
+| Browser engine | `web/sudoku/` | classic board model, technique catalogue, `findHint` and solve, ported to TypeScript — the Sudoku tab's **Get hint** and **Solve** run locally, no server round trip |
 | PWA shell | `static/manifest.webmanifest`, `static/sw.js`, `web/pwa.ts` | installability + the Android share target |
 
 Icons are drawn by `python -m tools.make_icons`; the PNGs it writes are what ship.
@@ -102,10 +102,11 @@ The Python suite covers the model, every technique (with synthetic candidate gri
 an end-to-end solve consistent with a backtracking solver, the mistake audit, and the
 CV pipeline against real screenshots.
 
-`tests/engine/` unit-tests the TypeScript port of that model and its backtracking
-solve (`web/sudoku/`) directly, with no jsdom and no build step — Node runs `.ts`
-source straight, stripping types as it goes. It's where the Python model's own
-tests are ported assertion-for-assertion as the engine moves into the browser.
+`tests/engine/` unit-tests the TypeScript engine (`web/sudoku/`) directly — the board
+model, the technique catalogue and its escalation order, `findHint`, and solve — with
+no jsdom and no build step, since Node runs `.ts` source straight, stripping types as
+it goes. It's where the Python tests are ported assertion-for-assertion as the engine
+moves into the browser.
 
 The UI suite (`tests/ui/`) loads `static/index.html` under jsdom, imports the built
 modules from `static/dist/` and drives the page with real events, asserting on what
@@ -113,7 +114,9 @@ ends up in the DOM. It runs against the shipped bundle, so it needs `npm run bui
 first. It is deliberately separate:
 a correct engine and a correct API response are not enough if the page discards them,
 which is exactly how an unusable hint survived several rounds of fixes to the engine
-behind it. Requests are stubbed, so the suite needs no server and takes ~0.3s.
+behind it. Nothing here reaches the network: what the server still answers is stubbed,
+and on the tabs that hint and solve locally `fetch` is stubbed to throw, so a
+regression that quietly routes them back through the network fails loudly.
 
 All three run on every push and pull request — see `.github/workflows/ci.yml`.
 

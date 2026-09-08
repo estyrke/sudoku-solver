@@ -1,5 +1,8 @@
 // Sudoku Helper front-end: editable board, manual entry, image parse, hint reveal.
 //
+// Hinting and solving run the ported engine in the page (web/sudoku/*.ts); the
+// only thing left that talks to the server is reading a screenshot.
+//
 // Registers itself with the puzzle-type shell (see shell.ts) and mounts its
 // UI into the container the shell hands it. All state below is module-level
 // (private to this module) so it lives for the lifetime of the page — the
@@ -12,6 +15,7 @@
 
 import type { SharedReading } from "./shell";
 import { Board } from "./sudoku/model.ts";
+import { findHint, hintToWire, nudge, type WireHint } from "./sudoku/hint.ts";
 import { solve } from "./sudoku/solver.ts";
 
 const N = 9;
@@ -32,19 +36,10 @@ interface WireCell {
   low_confidence?: boolean;
 }
 
-interface Hint {
-  action: "place" | "eliminate";
-  cells: { r: number; c: number }[];
-  digits: number[];
-  explanation: string;
-}
-
-/** The /hint reply, once it is known to be a hint rather than a refusal. */
-interface HintReply {
-  ok: true;
+/** A hint plus the two gentler things the reveal ladder says before it. */
+interface Reveal {
   nudge: string;
-  technique: string;
-  hint: Hint;
+  hint: WireHint;
 }
 
 // The page's own markup, so every lookup below is known to succeed; a miss is a
@@ -62,7 +57,7 @@ let resultEl!: HTMLElement;
 let cells = makeEmpty();
 let selected = 0;
 let mode: "pen" | "pencil" = "pen";
-let currentHint: HintReply | null = null;
+let currentHint: Reveal | null = null;
 let revealLevel = 0;
 let lastImageFile: File | null = null;
 
@@ -226,8 +221,7 @@ function loadBoard(data: { cells: WireCell[] }): void {
 }
 
 // --- solving ----------------------------------------------------------
-// Runs entirely in the browser: no /solve request, unlike hinting and reading,
-// which still go to the server (see web/sudoku/solver.ts).
+// Runs entirely in the browser: no /solve request (see web/sudoku/solver.ts).
 function doSolve(): void {
   const solved = solve(Board.fromWire(toPayload()));
   if (!solved) {
@@ -256,22 +250,42 @@ function clearHint(): void {
   hintEl.textContent = "No hint yet.";
 }
 
-async function getHint(): Promise<void> {
-  const res = await window.fetch("/hint", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(toPayload()),
-  });
-  const data = await res.json();
-  if (!data.ok) {
+/**
+ * Find and show a hint. Runs the ported engine in the page — no request.
+ *
+ * The refusals are worded exactly as the deleted `/hint` endpoint worded them,
+ * and are checked in the same order: an invalid board first, then a solved one,
+ * then a board no implemented technique can speak to.
+ */
+function getHint(): void {
+  const board = Board.fromWire(toPayload());
+  const refuse = (reason: string): void => {
     currentHint = null;
     revealEl.hidden = true;
     applyBtn.disabled = true;
     hintEl.className = "hint";
-    hintEl.innerHTML = `<span class="warn">${data.reason}</span>`;
+    hintEl.innerHTML = `<span class="warn">${reason}</span>`;
+  };
+
+  if (!board.isValid()) {
+    refuse("The board is invalid — a digit repeats in a unit.");
     return;
   }
-  currentHint = data as HintReply;
+  if (board.isSolved()) {
+    refuse("This board is already solved. 🎉");
+    return;
+  }
+  const hint = findHint(board);
+  if (hint === null) {
+    refuse(
+      "No technique in the current set applies. The board may need a " +
+        "more advanced strategy than is implemented yet."
+    );
+    return;
+  }
+
+  // Progressive reveal levels: nudge -> technique name -> full reasoning.
+  currentHint = { nudge: nudge(hint), hint: hintToWire(hint) };
   revealLevel = 1;
   applyBtn.disabled = false;
   revealEl.hidden = false;
@@ -280,10 +294,10 @@ async function getHint(): Promise<void> {
 
 function showReveal(): void {
   if (!currentHint) return;
-  const { nudge, technique, hint } = currentHint;
+  const { nudge, hint } = currentHint;
   let html = "";
   if (revealLevel >= 1) html += `<div>${nudge}</div>`;
-  if (revealLevel >= 2) html += `<div class="tech">${technique}</div>`;
+  if (revealLevel >= 2) html += `<div class="tech">${hint.technique}</div>`;
   if (revealLevel >= 3) html += `<div>${hint.explanation}</div>`;
   hintEl.className = "hint";
   hintEl.innerHTML = html;
