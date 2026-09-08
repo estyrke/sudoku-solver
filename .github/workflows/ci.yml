@@ -46,6 +46,11 @@ jobs:
             tests/ui/package-lock.json
       - run: npm ci
       - run: npm run typecheck
+      # tests/engine: pure-logic unit tests for web/sudoku's ported engine
+      # (Board, solve, ...), run straight off the .ts source with Node's own
+      # type-stripping rather than through Vite — see tests/engine/package.json.
+      - run: npm test
+        working-directory: tests/engine
       - run: npm run build
       # static/dist is committed because the deploy has no Node step: what is in
       # the repo is what gets served. A build that changes it means the sources

@@ -52,7 +52,8 @@ still works; only sharing is missing. See
 | Board model | `sudoku/model.py` | grid, units/peers, candidate derivation, validity |
 | Hint engine | `sudoku/solver/` | escalating techniques + `find_hint` (simplest first) |
 | CV reader | `sudoku/reader/` | grid detection → cell parsing → template-matched digits |
-| Web app | `app.py`, `web/` | `/parse`, `/hint`, `/confirm`, `/solve` + the board UI |
+| Web app | `app.py`, `web/` | `/parse`, `/hint`, `/confirm` + the board UI |
+| Browser engine | `web/sudoku/` | classic board model + backtracking solve, ported to TypeScript — the Sudoku tab's **Solve** button runs this locally, no server round trip |
 | PWA shell | `static/manifest.webmanifest`, `static/sw.js`, `web/pwa.ts` | installability + the Android share target |
 
 Icons are drawn by `python -m tools.make_icons`; the PNGs it writes are what ship.
@@ -93,12 +94,18 @@ exemplars live under `templates/<digit>/` and are git-ignored.
 ```bash
 pytest                                  # model, techniques, solver, reader
 npm ci && npm run typecheck && npm run build             # the browser modules
+npm --prefix tests/engine test                           # the browser engine, straight off .ts
 npm --prefix tests/ui ci && npm --prefix tests/ui test   # the page, under jsdom
 ```
 
 The Python suite covers the model, every technique (with synthetic candidate grids),
 an end-to-end solve consistent with a backtracking solver, the mistake audit, and the
 CV pipeline against real screenshots.
+
+`tests/engine/` unit-tests the TypeScript port of that model and its backtracking
+solve (`web/sudoku/`) directly, with no jsdom and no build step — Node runs `.ts`
+source straight, stripping types as it goes. It's where the Python model's own
+tests are ported assertion-for-assertion as the engine moves into the browser.
 
 The UI suite (`tests/ui/`) loads `static/index.html` under jsdom, imports the built
 modules from `static/dist/` and drives the page with real events, asserting on what
@@ -108,7 +115,7 @@ a correct engine and a correct API response are not enough if the page discards 
 which is exactly how an unusable hint survived several rounds of fixes to the engine
 behind it. Requests are stubbed, so the suite needs no server and takes ~0.3s.
 
-Both run on every push and pull request — see `.github/workflows/ci.yml`.
+All three run on every push and pull request — see `.github/workflows/ci.yml`.
 
 ## Tuning for your app
 

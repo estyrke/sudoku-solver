@@ -1,6 +1,9 @@
 {
-  // The browser modules only. The Node-side test harness lives in tests/ui and
-  // stays plain CommonJS JavaScript, so it is deliberately out of scope here.
+  // The browser modules, plus tests/engine: pure-logic unit tests that run
+  // straight off this source with Node's native TypeScript support rather
+  // than through Vite — see tests/engine/package.json. The page/DOM harness
+  // in tests/ui stays plain CommonJS JavaScript and is deliberately out of
+  // scope here.
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
@@ -10,7 +13,11 @@
     "noEmit": true,
     "isolatedModules": true,
     "skipLibCheck": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    // web/sudoku/*.ts import each other with an explicit ".ts" extension so
+    // Node's ESM loader can run them unbundled in tests/engine; tsc otherwise
+    // rejects that extension in an import specifier.
+    "allowImportingTsExtensions": true
   },
-  "include": ["web", "vite.config.ts"]
+  "include": ["web", "vite.config.ts", "tests/engine"]
 }

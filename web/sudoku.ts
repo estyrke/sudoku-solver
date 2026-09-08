@@ -11,6 +11,8 @@
 // substitute them per boot — see tests/ui/harness.js.
 
 import type { SharedReading } from "./shell";
+import { Board } from "./sudoku/model.ts";
+import { solve } from "./sudoku/solver.ts";
 
 const N = 9;
 
@@ -53,6 +55,7 @@ let revealEl!: HTMLElement;
 let applyBtn!: HTMLButtonElement;
 let dropStatus!: HTMLElement;
 let panelEl!: HTMLElement;
+let resultEl!: HTMLElement;
 
 // --- state ----------------------------------------------------------------
 // 81 cells, row-major. pencil_marks is a Set for editing convenience.
@@ -222,6 +225,27 @@ function loadBoard(data: { cells: WireCell[] }): void {
   render();
 }
 
+// --- solving ----------------------------------------------------------
+// Runs entirely in the browser: no /solve request, unlike hinting and reading,
+// which still go to the server (see web/sudoku/solver.ts).
+function doSolve(): void {
+  const solved = solve(Board.fromWire(toPayload()));
+  if (!solved) {
+    resultEl.textContent = "No solution exists for this board.";
+    resultEl.classList.remove("empty");
+    return;
+  }
+  const wire = solved.toWire();
+  wire.cells.forEach((c, i) => {
+    cells[i].value = c.value;
+    cells[i].pencil_marks.clear();
+  });
+  resultEl.textContent = "Solved.";
+  resultEl.classList.remove("empty");
+  clearHint();
+  render();
+}
+
 // --- hints ----------------------------------------------------------------
 function clearHint(): void {
   currentHint = null;
@@ -362,6 +386,7 @@ function mount(containerEl: HTMLElement): void {
   revealEl = panelEl.querySelector("#reveal")!;
   applyBtn = panelEl.querySelector("#apply")!;
   dropStatus = panelEl.querySelector("#dropStatus")!;
+  resultEl = panelEl.querySelector("#result")!;
 
   // --- wiring ---------------------------------------------------------------
   const drop = panelEl.querySelector("#drop")!;
@@ -391,11 +416,14 @@ function mount(containerEl: HTMLElement): void {
   );
   panelEl.querySelector("#numClear")!.addEventListener("click", clearCell);
   panelEl.querySelector("#getHint")!.addEventListener("click", getHint);
+  panelEl.querySelector("#solve")!.addEventListener("click", doSolve);
   panelEl.querySelector("#confirmRead")!.addEventListener("click", confirmReading);
   applyBtn.addEventListener("click", applyStep);
   panelEl.querySelector("#clear")!.addEventListener("click", () => {
     cells = makeEmpty();
     clearHint();
+    resultEl.textContent = "No solve yet.";
+    resultEl.classList.add("empty");
     render();
   });
   revealEl.querySelectorAll<HTMLElement>("button").forEach((b) =>
