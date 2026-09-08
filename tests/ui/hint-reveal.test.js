@@ -4,30 +4,24 @@
 // engine had been producing a precise explanation for a release, the API was
 // returning it, and killer.js never read it off the response — so the hint
 // stayed as useless on screen as it had been before the fix. Asserting on what
-// the DOM says, rather than on what the endpoint returns, is the whole point.
+// the DOM says, rather than on what the engine returns, is the whole point.
+//
+// The engine runs in the page now, so there is no reply left to stub: the board
+// below is painted and pencilled through the UI, and the hint the page shows is
+// the real one. `fetch` throws, so a hint that goes back through the network
+// fails here rather than passing by coincidence.
 
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
 
 const { boot } = require("./harness");
 
-// A fixed reply stands in for the API: this file is about presentation, and a
-// live engine would let a change in phrasing quietly rewrite the assertions.
-const REPLY = {
-  ok: true,
-  nudge: "Look at the 32-cage at r4c8.",
-  technique: "Cage sum",
-  hint: {
-    technique: "Cage sum",
-    level: 3,
-    action: "eliminate",
-    cells: [{ r: 3, c: 7 }],
-    digits: [3],
-    units: ["the 32-cage at r4c8"],
-    explanation: "the 32-cage at r4c8 needs 31 more across 5 cells. The other 4 cells " +
-                 "can total at most 27, so r4c8 must be at least 4 — 3 cannot go there.",
-  },
-};
+// A two-cell cage totalling 4 has one workable pair, {1,3}: whatever its
+// partner holds is at least 1, so this cell is at most 3 and the 5 pencilled in
+// it cannot stand. One line of arithmetic, one digit eliminated, two marks left
+// untouched — small enough to assert on every level of the reveal.
+const CAGE = [[3, 7], [3, 8]];
+const MARKS = [1, 3, 5];
 
 describe("killer hint reveal", () => {
   let ui;
@@ -36,41 +30,50 @@ describe("killer hint reveal", () => {
   const revealTo = (level) => ui.fire(ui.revealEl.querySelector(`[data-level="${level}"]`), "click");
 
   before(async () => {
-    ui = await boot({ fetch: async () => ({ ok: true, json: async () => REPLY }) });
+    ui = await boot({
+      fetch: async () => {
+        throw new Error("Hinting must not touch the network");
+      },
+    });
+
+    ui.window.prompt = () => "4";
+    const [[r0, c0], ...rest] = CAGE;
+    ui.fire(ui.cellAt(r0, c0), "mousedown");
+    for (const [r, c] of rest) ui.fire(ui.cellAt(r, c), "mouseover");
+    ui.fireOnDocument("mouseup");
 
     // Pencil in the marks the hint speaks about, so the reveal has something to
     // strike through.
     ui.fire(ui.inPanel('[data-kmode="digits"]'), "click");
     ui.fire(ui.inPanel('[data-kpen="pencil"]'), "click");
     ui.fire(ui.cellAt(3, 7), "click");
-    for (const d of [3, 4, 5]) ui.fire(ui.digit(d), "click");
-    assert.equal(ui.cellAt(3, 7).querySelector(".marks")?.textContent, "345");
+    for (const d of MARKS) ui.fire(ui.digit(d), "click");
+    assert.equal(ui.cellAt(3, 7).querySelector(".marks")?.textContent, "135");
   });
 
   it("offers no reveal until there is a hint to reveal", () => {
     assert.ok(ui.revealEl.hidden);
   });
 
-  it("level 1 gives the nudge and nothing else", async () => {
+  it("level 1 gives the nudge and nothing else", () => {
     ui.fire(ui.inPanel("#kGetHint"), "click");
-    await ui.flush();
 
     assert.equal(ui.revealEl.hidden, false);
-    assert.match(shown(), /Look at the 32-cage at r4c8/);
+    assert.match(shown(), /Look at the 4-cage at r4c8/);
     assert.doesNotMatch(shown(), /Cage sum/, "the technique is level 2's to give away");
-    assert.doesNotMatch(shown(), /must be at least 4/, "and the argument is level 3's");
+    assert.doesNotMatch(shown(), /must be at most 3/, "and the argument is level 3's");
     assert.equal(targets(), 0, "pointing at the cell would give away the nudge");
   });
 
   it("level 2 names the technique but still withholds the argument", () => {
     revealTo(2);
     assert.match(shown(), /Cage sum/);
-    assert.doesNotMatch(shown(), /must be at least 4/);
+    assert.doesNotMatch(shown(), /must be at most 3/);
   });
 
   it("level 3 spells out the argument", () => {
     revealTo(3);
-    assert.match(shown(), /The other 4 cells can total at most 27, so r4c8 must be at least 4/);
+    assert.match(shown(), /The other cell can total at least 1, so r4c8 must be at most 3/);
   });
 
   it("level 3 points at the cell and reddens just the marks it rules out", () => {
@@ -78,7 +81,7 @@ describe("killer hint reveal", () => {
     assert.equal(targets(), 1);
 
     const hot = [...ui.cellAt(3, 7).querySelectorAll(".marks span.hot")].map((s) => s.textContent);
-    assert.deepEqual(hot, ["3"], "4 and 5 survive this elimination");
+    assert.deepEqual(hot, ["5"], "1 and 3 survive this elimination");
   });
 
   it("drops the highlight when the reveal steps back down", () => {

@@ -1,5 +1,5 @@
-// Top-level hint search and candidate bookkeeping — the TypeScript port of the
-// hint half of sudoku/solver/hint.py. (The solver half lives in solver.ts.)
+// Top-level hint search and candidate bookkeeping. (The solver lives in
+// solver.ts.)
 //
 // `findHint` returns the single simplest applicable step. The working Candidate
 // grid it uses is seeded from the player's Pencil marks when they have them,

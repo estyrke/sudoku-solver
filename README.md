@@ -49,11 +49,10 @@ still works; only sharing is missing. See
 
 | Layer | Where | What |
 | --- | --- | --- |
-| Board model | `sudoku/model.py` | grid, units/peers, candidate derivation, validity |
-| Hint engine | `sudoku/solver/` | escalating techniques + `find_hint` (simplest first) — still serving Killer, whose port is issue #21 |
+| Board model | `sudoku/model.py` | grid, units/peers, cages, candidate derivation, validity — reader support only; the engine's own copy is `web/sudoku/model.ts` |
 | CV reader | `sudoku/reader/` | grid detection → cell parsing → template-matched digits |
 | Web app | `app.py`, `web/` | `/parse`, `/confirm` + the board UI |
-| Browser engine | `web/sudoku/` | classic board model, technique catalogue, `findHint` and solve, ported to TypeScript — the Sudoku tab's **Get hint** and **Solve** run locally, no server round trip |
+| Browser engine | `web/sudoku/` | board model with Cages, the escalating technique catalogue (classic and Killer alike), `findHint`, `solve` and the mistake audit, in TypeScript — the Sudoku and Killer tabs' **Get hint** and **Solve** run locally, no server round trip |
 | PWA shell | `static/manifest.webmanifest`, `static/sw.js`, `web/pwa.ts` | installability + the Android share target |
 
 Icons are drawn by `python -m tools.make_icons`; the PNGs it writes are what ship.
@@ -92,21 +91,22 @@ exemplars live under `templates/<digit>/` and are git-ignored.
 ## Tests
 
 ```bash
-pytest                                  # model, techniques, solver, reader
+pytest                                  # board model + CV reader
 npm ci && npm run typecheck && npm run build             # the browser modules
 npm --prefix tests/engine test                           # the browser engine, straight off .ts
 npm --prefix tests/ui ci && npm --prefix tests/ui test   # the page, under jsdom
 ```
 
-The Python suite covers the model, every technique (with synthetic candidate grids),
-an end-to-end solve consistent with a backtracking solver, the mistake audit, and the
-CV pipeline against real screenshots.
+The Python suite covers the board model the reader builds on and the CV pipeline
+against real screenshots — including a check that each reference Killer screenshot
+still reads as the board committed under `tests/fixtures/killer_boards/`, which is
+what the TypeScript solver tests solve.
 
 `tests/engine/` unit-tests the TypeScript engine (`web/sudoku/`) directly — the board
-model, the technique catalogue and its escalation order, `findHint`, and solve — with
-no jsdom and no build step, since Node runs `.ts` source straight, stripping types as
-it goes. It's where the Python tests are ported assertion-for-assertion as the engine
-moves into the browser.
+model and its Cages, the technique catalogue and its escalation order, `findHint`,
+`solve` and the mistake audit — with no jsdom and no build step, since Node runs `.ts`
+source straight, stripping types as it goes. It's where the Python tests were ported
+assertion-for-assertion as the engine moved into the browser.
 
 The UI suite (`tests/ui/`) loads `static/index.html` under jsdom, imports the built
 modules from `static/dist/` and drives the page with real events, asserting on what

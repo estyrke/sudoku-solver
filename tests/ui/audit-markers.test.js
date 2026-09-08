@@ -4,32 +4,86 @@
 // reveal buttons, because there is nothing to reveal in stages. The marker has
 // to be as easy to clear as it is to raise — one left behind on a cell the
 // player has since fixed is worse than none at all.
+//
+// The audit and the hint engine both run in the page now, so there is no reply
+// left to stub: the board is loaded from a real read of a real screenshot
+// (tests/fixtures/killer_boards, produced by the Python reader) and every
+// verdict below is the engine's own. `fetch` is allowed only for that load, and
+// counted, so a regression that routes hinting back through the network fails
+// here rather than passing by coincidence.
 
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
-const { boot } = require("./harness");
+const { boot, ROOT } = require("./harness");
+
+const fixture = (name) =>
+  JSON.parse(
+    fs.readFileSync(path.join(ROOT, "tests/fixtures/killer_boards", `${name}.json`), "utf8"),
+  );
+
+/** A /killer/parse reply carrying an already-read board. */
+const reading = (board) => ({
+  board,
+  unsure: [],
+  fully_caged: true,
+  checksum_ok: true,
+  sum_total: 405,
+  needs_review: false,
+});
+
+// board3 is clean, fully caged and has exactly one solution: r1c1 is 6 and
+// r5c5 is 3, so any other legal digit there is a mistake no rule catches — the
+// board simply stops having an answer, which is what the audit is for.
+const WRONG_AT_R1C1 = 3;
+const WRONG_AT_R5C5 = 1;
 
 describe("killer audit markers", () => {
   let ui;
-  let reply = null;                                  // swapped per case
+  let calls;
   const marked = () => ui.board.querySelectorAll(".kcell.mistake").length;
-  const getHint = async () => {
-    ui.fire(ui.inPanel("#kGetHint"), "click");
+  const getHint = () => ui.fire(ui.inPanel("#kGetHint"), "click");
+  const enter = (r, c, d) => {
+    ui.fire(ui.cellAt(r, c), "click");
+    ui.fire(ui.digit(d), "click");
+  };
+
+  /** Drop a screenshot on the page and let the (stubbed) reader answer with
+   * `board`. Everything after this point is the page's own engine. */
+  const load = async () => {
+    ui.fire(ui.inPanel("#kFile"), "change");
     await ui.flush();
+    assert.equal(ui.inPanel("#kDropStatus").textContent.startsWith("Read 2"), true);
+    ui.fire(ui.inPanel('[data-kmode="digits"]'), "click");
   };
 
   before(async () => {
-    ui = await boot({ fetch: async () => ({ ok: true, json: async () => reply }) });
+    calls = [];
+    let board = fixture("puzzle_page_killer_board3");
+    ui = await boot({
+      fetch: async (url) => {
+        calls.push(url);
+        return { ok: true, json: async () => reading(board) };
+      },
+      setUp(window) {
+        // jsdom gives a file input no files; the page only ever passes the
+        // first one straight to FormData, which the stub above ignores.
+        window.FormData = class {
+          append() {}
+        };
+        Object.defineProperty(window.document.getElementById("kFile"), "files", {
+          value: [{ name: "board3.png" }],
+        });
+      },
+    });
+    await load();
   });
 
-  it("flags the cell the audit blames", async () => {
-    reply = {
-      ok: false,
-      reason: "r1c1 is wrong — clear it and the board solves.",
-      audit: { verdict: "wrong-value", cells: [{ r: 0, c: 0 }], message: "x" },
-    };
-    await getHint();
+  it("flags the cell the audit blames", () => {
+    enter(0, 0, WRONG_AT_R1C1);
+    getHint();
 
     assert.match(ui.hintEl.textContent, /r1c1 is wrong/);
     assert.ok(ui.revealEl.hidden, "a mistake has no staged reveal");
@@ -37,48 +91,67 @@ describe("killer audit markers", () => {
     assert.equal(marked(), 1);
   });
 
-  it("clears the markers when the audit comes back clean", async () => {
-    reply = {
-      ok: false,
-      reason: "No mistakes on the board — needs a technique.",
-      audit: { verdict: "ok", cells: [], message: "clean" },
-    };
-    await getHint();
+  it("moves the marker when a later audit blames a different cell", () => {
+    enter(0, 0, WRONG_AT_R1C1); // typing the same digit again clears the cell
+    enter(4, 4, WRONG_AT_R5C5);
+    getHint();
 
-    assert.equal(marked(), 0);
-    assert.match(ui.hintEl.textContent, /needs a technique/);
-  });
-
-  it("moves the marker when a later audit blames a different cell", async () => {
-    reply = {
-      ok: false,
-      reason: "r5c5 is wrong.",
-      audit: { verdict: "wrong-value", cells: [{ r: 4, c: 4 }], message: "x" },
-    };
-    await getHint();
-
+    assert.match(ui.hintEl.textContent, /r5c5 is wrong/);
     assert.ok(ui.cellAt(4, 4).classList.contains("mistake"));
     assert.ok(!ui.cellAt(0, 0).classList.contains("mistake"), "the stale marker is gone");
+    assert.equal(marked(), 1);
   });
 
   it("clears the marker as soon as the cell is edited", () => {
-    ui.fire(ui.inPanel('[data-kmode="digits"]'), "click");
-    ui.fire(ui.cellAt(4, 4), "click");
-    ui.fire(ui.digit(7), "click");
+    enter(4, 4, 7);
     assert.equal(marked(), 0);
   });
 
-  it("shows a real hint again once the mistake is behind it", async () => {
-    reply = {
-      ok: true,
-      nudge: "Look at the 9-cage at r3c7.",
-      technique: "Cage sum",
-      hint: { action: "eliminate", cells: [{ r: 2, c: 7 }], digits: [6], explanation: "e" },
-    };
-    await getHint();
+  it("shows a real hint again once the mistake is behind it", () => {
+    enter(4, 4, 7); // back to empty
+    getHint();
 
     assert.equal(ui.revealEl.hidden, false);
-    assert.match(ui.hintEl.textContent, /Look at the 9-cage/);
+    assert.match(ui.hintEl.textContent, /Look at the 9-cage at r3c7/);
     assert.equal(marked(), 0, "a hint and a mistake marker must never show together");
+  });
+
+  it("says so plainly when the board is clean but nothing applies", async () => {
+    // board4 audits clean and no implemented technique speaks to it — the one
+    // case where "no hint" is the honest answer rather than a hidden mistake.
+    ui.window.fetch = async (url) => {
+      calls.push(url);
+      return { ok: true, json: async () => reading(fixture("puzzle_page_killer_board4")) };
+    };
+    ui.fire(ui.inPanel('[data-kmode="cages"]'), "click");
+    await load();
+    getHint();
+
+    assert.match(ui.hintEl.textContent, /needs a technique that isn't implemented yet/);
+    assert.ok(ui.revealEl.hidden);
+    assert.equal(marked(), 0);
+  });
+
+  it("does not treat a board still being drawn as a mistake", () => {
+    // Half-drawn cages make every verdict an artefact of the ones not there
+    // yet, so the audit declines to have an opinion — and a board being entered
+    // must still be able to ask for a hint rather than meet a running stream of
+    // complaints.
+    ui.fire(ui.inPanel("#kClear"), "click");
+    ui.fire(ui.inPanel('[data-kmode="cages"]'), "click");
+    ui.window.prompt = () => "4";
+    ui.fire(ui.cellAt(0, 0), "mousedown");
+    ui.fire(ui.cellAt(0, 1), "mouseover");
+    ui.fireOnDocument("mouseup");
+
+    getHint();
+
+    assert.equal(marked(), 0);
+    assert.equal(ui.revealEl.hidden, false, "a part-caged board still gets a hint");
+    assert.match(ui.hintEl.textContent, /Look at the 4-cage at r1c1/);
+  });
+
+  it("asked the network for nothing but the screenshot", () => {
+    assert.deepEqual(calls, ["/killer/parse", "/killer/parse"]);
   });
 });

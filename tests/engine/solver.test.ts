@@ -11,6 +11,9 @@ import assert from "node:assert/strict";
 // Node's ESM loader (unlike Vite's bundler resolution, which web/ is written
 // for) requires the on-disk extension in an import specifier — hence ".ts"
 // here but not in web/ source importing web/ source.
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import { Board } from "../../web/sudoku/model.ts";
 import { solve } from "../../web/sudoku/solver.ts";
 
@@ -56,4 +59,56 @@ test("does not mutate the board passed in", () => {
   const before = board.toWire();
   solve(board);
   assert.deepEqual(board.toWire(), before);
+});
+
+// ---------------------------------------------------------------------------
+// Killer Sudoku: the reference boards
+// ---------------------------------------------------------------------------
+
+// The four screenshots tests/test_reader.py reads, as the reader read them
+// (tests/fixtures/killer_boards/*.json). The Python half of this test used to
+// read and solve in one go; the reader stays server-side, so the read is pinned
+// there and the solve is pinned here, against the same boards.
+const REFERENCE = [
+  "puzzle_page_killer_sample_board",
+  "puzzle_page_killer_board2",
+  "puzzle_page_killer_board3",
+  "puzzle_page_killer_board4",
+];
+
+const fixture = (name: string): Board =>
+  Board.fromWire(
+    JSON.parse(
+      readFileSync(
+        path.join(import.meta.dirname, "..", "fixtures", "killer_boards", `${name}.json`),
+        "utf8",
+      ),
+    ),
+  );
+
+test("every reference Killer board solves, quickly", () => {
+  // The budget is the point. Without cage-sum propagation the search took 108
+  // seconds on one of these, which in the browser is not slowness but a tab
+  // that has stopped responding. These finish in milliseconds; one second is
+  // loose enough for a slow CI box and still two orders of magnitude short of
+  // the behaviour it guards against.
+  for (const name of REFERENCE) {
+    const board = fixture(name);
+    const started = performance.now();
+    const solved = solve(board);
+    const elapsed = performance.now() - started;
+
+    assert(solved, `${name} came out unsolvable`);
+    assert.ok(solved.isSolved(), name);
+    for (const cage of solved.cages) {
+      const total: number = cage.cells.reduce((n, [r, c]) => n + solved.value(r, c)!, 0);
+      assert.equal(total, cage.sum, `${name}: ${cage.sum}-cage totals ${total}`);
+    }
+    // the digits the player had already entered must survive the solve
+    for (let i = 0; i < 81; i++) {
+      const before = board.cells[i].value;
+      if (before !== null) assert.equal(solved.cells[i].value, before, `${name} at ${i}`);
+    }
+    assert.ok(elapsed < 1000, `${name} took ${(elapsed / 1000).toFixed(1)}s`);
+  }
 });

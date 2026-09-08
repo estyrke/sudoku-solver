@@ -8,14 +8,24 @@
 //   Digits — click a cell and type; Pen writes a value, Pencil toggles marks.
 //
 // Cage legality (2+ cells, orthogonally contiguous, reachable sum, no overlap)
-// is enforced by the model server-side; the checks here exist only to give
-// immediate feedback rather than to be the source of truth.
+// is enforced by the model, in `Cage`'s constructor; the checks here exist only
+// to give immediate feedback while a cage is being painted, and to word it in
+// terms of the gesture that just failed.
+//
+// Hinting, solving and the mistake audit all run in the page, against the same
+// engine the Sudoku tab uses — Killer is part of that context, not a separate
+// one (docs/adr/0002-killer-sudoku-extends-sudoku-context.md). The server is
+// asked for nothing but screenshot reading.
 //
 // Browser APIs are reached through `window` (`window.fetch`, `window.FormData`,
 // `window.prompt`, …) rather than as bare globals, so the jsdom page harness can
 // substitute them per boot — see tests/ui/harness.js.
 
 import type { SharedReading } from "./shell";
+import { Board, sumBounds } from "./sudoku/model.ts";
+import { audit, auditToWire, type WireAudit } from "./sudoku/audit.ts";
+import { findHint, hintToWire, nudge, type WireHint } from "./sudoku/hint.ts";
+import { solve } from "./sudoku/solver.ts";
 
 const N = 9;
 const idx = (r: number, c: number) => r * N + c;
@@ -33,19 +43,11 @@ interface Cage {
   sum: number;
 }
 
-interface Hint {
-  action: "place" | "eliminate";
-  cells: { r: number; c: number }[];
-  digits: number[];
-  explanation: string;
-}
-
-/** The /killer/hint reply, once it is known to be a hint rather than a refusal. */
-interface HintReply {
-  ok: true;
+/** A hint the page is currently showing, with its gentlest reveal already
+ * worded. */
+interface ShownHint {
   nudge: string;
-  technique: string;
-  hint: Hint;
+  hint: WireHint;
 }
 
 /** A reading of a Killer screenshot, from /killer/parse or the share target. */
@@ -71,7 +73,7 @@ let selected: { r: number; c: number } | null = null; // in digits mode
 let selectedCage: number | null = null; // index into `cages` in cages mode
 let dragging: Set<string> | null = null; // Set of "r,c" keys while dragging
 let unsure = new Set<string>(); // anchors whose sum the reader flagged as doubtful
-let currentHint: HintReply | null = null;
+let currentHint: ShownHint | null = null;
 let revealLevel = 0;
 let mistakes: string[] = []; // "r,c" keys the last audit flagged as wrong
 
@@ -119,15 +121,6 @@ function isContiguous(coords: Coord[]): boolean {
     }
   }
   return seen.size === want.size;
-}
-
-// Smallest/largest total reachable by `size` distinct digits 1-9.
-function sumBounds(size: number): [number, number] {
-  let lo = 0;
-  let hi = 0;
-  for (let i = 1; i <= size; i++) lo += i;
-  for (let i = 9; i > 9 - size; i--) hi += i;
-  return [lo, hi];
 }
 
 function describeCageProblem(coords: Coord[], total: number): string | null {
@@ -394,10 +387,15 @@ function clearCell(): void {
   render();
 }
 
-// ---- server ------------------------------------------------------------
+// ---- the engine ----------------------------------------------------------
 
-function toPayload() {
-  return {
+/** The page's board as the engine's Board, cages and all.
+ *
+ * Throws when the cages break a rule the painting checks let through — the
+ * model is the source of truth for that, and its wording is what the player
+ * used to see come back from the server. */
+function toBoard(): Board {
+  return Board.fromWire({
     cells: cells.map((cell) => ({
       value: cell.value,
       is_given: false,
@@ -408,35 +406,28 @@ function toPayload() {
       cells: cage.cells.map(([r, c]) => ({ r, c })),
       sum: cage.sum,
     })),
-  };
-}
-
-// The replies differ per endpoint (a hint, a solved board, a refusal carrying an
-// audit), and this slice still takes them on trust from the server; the shapes
-// get types when the engine moves into the browser.
-async function post(url: string): Promise<any> {
-  const res = await window.fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(toPayload()),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.detail || `Request failed (${res.status})`);
-  }
-  return data;
 }
 
-async function doSolve(): Promise<void> {
-  resultEl.textContent = "Solving…";
+// Runs entirely in the browser: no /killer/solve request.
+//
+// An unsolvable board is audited rather than blamed on the cages. "No solution
+// exists — check the cage sums" was the old answer, and it sent people to the
+// cages when the culprit was usually a digit they had entered; the audit says
+// which.
+function doSolve(): void {
+  // No "Solving…" placeholder: the solve is synchronous now, so the browser
+  // never gets a frame in which to paint one. (queens.ts still has one; it is
+  // still awaiting a response.)
   resultEl.classList.remove("empty");
   try {
-    const data = await post("/killer/solve");
-    if (!data.ok) {
-      resultEl.textContent = data.reason;
+    const board = toBoard();
+    const solved = solve(board);
+    if (solved === null) {
+      resultEl.textContent = audit(board).message;
       return;
     }
-    data.board.cells.forEach((cell: { value: number | null }, i: number) => {
+    solved.cells.forEach((cell, i) => {
       cells[i].value = cell.value;
       cells[i].marks = [];
     });
@@ -463,39 +454,69 @@ function clearHint(): void {
   hintEl.textContent = "No hint yet.";
 }
 
-async function doHint(): Promise<void> {
+/**
+ * Find and show a hint, running the ported engine in the page — no request.
+ *
+ * The board is audited *before* it is hinted, and a real mistake gets the
+ * audit's message instead of a hint: a hint deduced from a wrong entry, or in a
+ * world where a needed pencil mark has been rubbed out, is worse than no hint
+ * because it looks authoritative and sends the player further off. "incomplete"
+ * is not a mistake — just a board still being drawn — so it blocks nothing.
+ */
+function doHint(): void {
   hintEl.className = "hint";
-  hintEl.textContent = "Thinking…";
-  try {
-    const data = await post("/killer/hint");
-    if (!data.ok) {
-      currentHint = null;
-      revealEl.hidden = true;
-      hintEl.textContent = data.reason;
-      // A mistake report names cells; point at them the way a hint does, since
-      // "r1c1 is wrong" is only useful once you've found r1c1.
-      mistakes = (data.audit?.cells || []).map((m: { r: number; c: number }) => key(m.r, m.c));
-      render();
-      return;
-    }
-    mistakes = [];
-    currentHint = data as HintReply;
-    revealLevel = 1;
-    revealEl.hidden = false;
-    renderHint();
-  } catch (err) {
+  const refuse = (reason: string, report?: WireAudit): void => {
     currentHint = null;
     revealEl.hidden = true;
-    hintEl.textContent = (err as Error).message;
+    hintEl.textContent = reason;
+    // A mistake report names cells; point at them the way a hint does, since
+    // "r1c1 is wrong" is only useful once you've found r1c1.
+    mistakes = (report?.cells ?? []).map((m) => key(m.r, m.c));
+    render();
+  };
+
+  let board: Board;
+  try {
+    board = toBoard();
+  } catch (err) {
+    refuse((err as Error).message);
+    return;
   }
+
+  if (board.isSolved()) {
+    refuse("This board is already solved. 🎉");
+    return;
+  }
+
+  const report = audit(board);
+  if (!report.clean && report.verdict !== "incomplete") {
+    refuse(report.message, auditToWire(report));
+    return;
+  }
+
+  const hint = findHint(board);
+  if (hint === null) {
+    refuse(
+      "No mistakes on the board — this one needs a technique that " +
+        "isn't implemented yet."
+    );
+    return;
+  }
+
+  mistakes = [];
+  // Progressive reveal levels: nudge -> technique name -> full reasoning.
+  currentHint = { nudge: nudge(hint), hint: hintToWire(hint) };
+  revealLevel = 1;
+  revealEl.hidden = false;
+  renderHint();
 }
 
 function renderHint(): void {
   if (!currentHint) return;
-  const { nudge, technique, hint } = currentHint;
+  const { nudge, hint } = currentHint;
   let html = "";
   if (revealLevel >= 1) html += `<div>${nudge}</div>`;
-  if (revealLevel >= 2) html += `<div class="tech">${technique}</div>`;
+  if (revealLevel >= 2) html += `<div class="tech">${hint.technique}</div>`;
   if (revealLevel >= 3) html += `<div>${hint.explanation}</div>`;
   hintEl.className = "hint";
   hintEl.innerHTML = html;

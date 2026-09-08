@@ -16,8 +16,8 @@ export default defineConfig({
     minify: "esbuild",
     target: "es2022",
     rollupOptions: {
-      // Each module registers itself with the shell at load time and they never
-      // import one another, so these are five independent entry points rather
+      // Each module registers itself with the shell at load time and none of
+      // them imports another, so these are five independent entry points rather
       // than one bundle with an entry.
       input: Object.fromEntries(
         ["shell", "sudoku", "queens", "killer", "pwa"].map((name) => [
@@ -29,6 +29,13 @@ export default defineConfig({
         format: "es",
         entryFileNames: "[name].js",
         chunkFileNames: "[name].js",
+        // The Sudoku engine is shared by the sudoku and killer tabs — Killer is
+        // part of that context, not a separate one (ADR 0002) — so it ships as
+        // one chunk both entries import rather than being inlined into each.
+        // Named here because the default name is whichever of its modules
+        // rollup happened to enter through, which says nothing useful.
+        manualChunks: (id) =>
+          id.includes("/web/sudoku/") ? "sudoku-engine" : undefined,
       },
     },
   },

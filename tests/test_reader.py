@@ -6,6 +6,7 @@ mechanics — grid splitting, value/candidate separation, classification — usi
 same seeded font templates the reader ships with.
 """
 
+import json
 from pathlib import Path
 
 import cv2
@@ -82,12 +83,14 @@ def test_reader_reads_pencil_marks():
 from sudoku.model import Board
 from sudoku.reader.cell_parse import _positional_marks
 from sudoku.reader.killer import read_killer_board
-from sudoku.solver.hint import solve
 
 FIXTURE = Path(__file__).parent / "fixtures" / "puzzle_page_killer_sample_board.png"
 FIXTURE2 = Path(__file__).parent / "fixtures" / "puzzle_page_killer_board2.png"
 FIXTURE3 = Path(__file__).parent / "fixtures" / "puzzle_page_killer_board3.png"
 FIXTURE4 = Path(__file__).parent / "fixtures" / "puzzle_page_killer_board4.png"
+# The same four boards, as the reader read them, for the TypeScript engine
+# tests to solve without needing OpenCV.
+BOARDS = Path(__file__).parent / "fixtures" / "killer_boards"
 
 
 def test_positional_marks_defaults_to_the_whole_cell():
@@ -232,34 +235,23 @@ def test_killer_checksum_passes_on_a_correct_board():
     assert not read.needs_review
 
 
-def test_every_reference_board_solves_quickly_end_to_end():
-    """Read a screenshot, solve what comes out, and check the answer.
+def test_every_reference_board_matches_its_committed_read():
+    """Pin each reference screenshot to the board the reader produces from it.
 
-    The budget is the point. Without cage-sum propagation the search took 108
-    seconds on one of these, which on the deployed function is not slowness but
-    a FUNCTION_INVOCATION_TIMEOUT and a Solve button that appears to do nothing.
-    These finish in milliseconds; ten seconds is loose enough for a slow CI box
-    and still an order of magnitude short of the behaviour it guards against.
+    The solving half of this check moved to TypeScript with the engine — see
+    "every reference Killer board solves, quickly" in tests/engine/solver.test.ts,
+    which loads exactly these files. Comparing the live read against them is what
+    keeps the two halves talking about the same boards: a reader change that
+    alters a digit or a cage sum fails here rather than silently leaving the
+    engine's fixtures describing a board nobody reads any more.
     """
-    import time
-
     for path in (FIXTURE, FIXTURE2, FIXTURE3, FIXTURE4):
         board = read_killer_board(cv2.imread(str(path))).board
-        started = time.perf_counter()
-        solved = solve(board)
-        elapsed = time.perf_counter() - started
-
-        assert solved is not None, f"{path.name} came out unsolvable"
-        assert solved.is_solved(), path.name
-        for cage in solved.cages:
-            total = sum(solved.value(r, c) for r, c in cage.cells)
-            assert total == cage.sum, f"{path.name}: {cage.sum}-cage totals {total}"
-        # the digits the player had already entered must survive the solve
-        for r in range(9):
-            for c in range(9):
-                if board.value(r, c) is not None:
-                    assert solved.value(r, c) == board.value(r, c), (path.name, r, c)
-        assert elapsed < 10, f"{path.name} took {elapsed:.1f}s"
+        committed = json.loads((BOARDS / f"{path.stem}.json").read_text())
+        assert board.to_dict() == committed, (
+            f"{path.name} no longer reads as tests/fixtures/killer_boards has it; "
+            f"regenerate that file if the new read is the correct one"
+        )
 
 
 def test_killer_reader_handles_a_third_board_layout():

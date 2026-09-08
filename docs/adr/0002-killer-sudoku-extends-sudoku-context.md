@@ -7,3 +7,7 @@ Where ADR 0001 split Queens into its own context because it shared no vocabulary
 - `sudoku/model.py`'s `Board`/`Cell` gain an optional Cage layer; a board with no Cages is plain classic Sudoku, unchanged.
 - `sudoku/solver/techniques.py`'s existing escalating catalog (naked/hidden singles, pairs, etc.) gains two Cage-aware techniques (cage-sum candidate restriction, 45-rule) rather than a separate solver.
 - `sudoku/reader` gains cage-boundary and printed-sum detection alongside its existing digit classification, rather than a separate reader package.
+
+## Amendment (the TypeScript port)
+
+The engine has since moved into the browser and the Python solver package is gone, but the decision is unchanged and so is its shape: `web/sudoku/model.ts` carries `Cage` and `web/sudoku/techniques.ts` carries the cage-sum and 45-rule techniques in the one escalating catalogue, alongside the classic ones. There is still no Killer module. `sudoku/model.py` keeps its Cage layer because the CV reader, which is still Python, builds boards with it.

@@ -1,8 +1,13 @@
-"""FastAPI app: serves the board UI and the hint/parse/confirm endpoints.
+"""FastAPI app: serves the board UI, the screenshot readers, and Queens' hints.
 
 Run with::
 
     uvicorn app:app --reload
+
+Sudoku and Killer reason entirely in the browser — board model, techniques, hints,
+solving and the mistake audit all live in ``web/sudoku/`` — so nothing here answers
+for them. What is left is screenshot reading (``/parse``, ``/killer/parse``,
+``/share/parse``, ``/confirm``) plus the Queens endpoints, which are still to move.
 
 The CV reader is imported lazily so the logic + UI work even before OpenCV (and the
 reader module) are available.
@@ -20,8 +25,6 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from sudoku.model import Board
-from sudoku.solver.audit import audit
-from sudoku.solver.hint import find_hint, solve
 
 from queens.model import Board as QueensBoard
 from queens.solver.hint import find_hint as queens_find_hint
@@ -49,39 +52,6 @@ def _board_from_model(data: BoardModel) -> Board:
     return Board.from_dict({"cells": [c.model_dump() for c in data.cells]})
 
 
-class CoordModel(BaseModel):
-    r: int
-    c: int
-
-
-class CageModel(BaseModel):
-    cells: list[CoordModel]
-    sum: int
-
-
-class KillerBoardModel(BoardModel):
-    """A Killer board is a classic board plus cages — same context, same model,
-    per ``docs/adr/0002-killer-sudoku-extends-sudoku-context.md``."""
-
-    cages: list[CageModel] = []
-
-
-def _killer_board_from_model(data: KillerBoardModel) -> Board:
-    if len(data.cells) != 81:
-        raise HTTPException(400, "board must have 81 cells")
-    try:
-        return Board.from_dict(
-            {
-                "cells": [c.model_dump() for c in data.cells],
-                "cages": [cage.model_dump() for cage in data.cages],
-            }
-        )
-    except ValueError as exc:
-        # Cage rules (contiguity, size, reachable sum, overlap) are enforced in
-        # the model; surface the message rather than a 500.
-        raise HTTPException(400, str(exc))
-
-
 class QueensCellModel(BaseModel):
     state: str = "empty"
     region: int | None = None
@@ -96,15 +66,6 @@ def _queens_board_from_model(data: QueensBoardModel) -> QueensBoard:
     if len(data.cells) != data.n * data.n:
         raise HTTPException(400, f"board of size {data.n} must have {data.n * data.n} cells")
     return QueensBoard.from_dict({"n": data.n, "cells": [c.model_dump() for c in data.cells]})
-
-
-def _nudge(hint) -> str:
-    """The gentlest hint: which region to look at, without saying what to do."""
-    if hint.units:
-        return f"Look at {hint.units[0]}."
-    from sudoku.model import cell_name
-
-    return f"Look at {cell_name(*hint.cells[0])}."
 
 
 def _queens_nudge(hint) -> str:
@@ -231,56 +192,6 @@ def queens_hint_endpoint(data: QueensBoardModel) -> dict:
 
 # Static assets (css/js) served under /static.
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
-
-
-@app.post("/killer/solve")
-def killer_solve_endpoint(data: KillerBoardModel) -> dict:
-    board = _killer_board_from_model(data)
-    solved = solve(board)
-    if solved is None:
-        # "No solution exists — check the cage sums" was the old answer, and it
-        # sent people to the cages when the culprit was usually a digit they'd
-        # entered. The audit says which.
-        report = audit(board)
-        return {"ok": False, "reason": report.message, "audit": report.to_dict()}
-    return {"ok": True, "board": solved.to_dict()}
-
-
-@app.post("/killer/hint")
-def killer_hint_endpoint(data: KillerBoardModel) -> dict:
-    """Killer hints run the same escalating technique list as classic Sudoku,
-    with the cage-sum and 45-rule techniques slotted into it.
-
-    When nothing applies the board is audited rather than shrugged at: "no
-    technique applies" is the right answer only when the board is actually clean.
-    """
-    board = _killer_board_from_model(data)
-    if board.is_solved():
-        return {"ok": False, "reason": "This board is already solved. 🎉"}
-
-    # Audit before hinting, not after. A hint deduced from a wrong entry or in a
-    # world where a needed pencil mark has been rubbed out is worse than no hint:
-    # it looks authoritative and sends the player further off. "incomplete" is not
-    # a mistake, just a board still being drawn, so it doesn't block anything.
-    report = audit(board)
-    if not report.clean and report.verdict != "incomplete":
-        return {"ok": False, "reason": report.message, "audit": report.to_dict()}
-
-    hint = find_hint(board)
-    if hint is not None:
-        return {
-            "ok": True,
-            "nudge": _nudge(hint),
-            "technique": hint.technique,
-            "hint": hint.to_dict(),
-            "audit": report.to_dict(),
-        }
-    return {
-        "ok": False,
-        "reason": "No mistakes on the board — this one needs a technique that "
-        "isn't implemented yet.",
-        "audit": report.to_dict(),
-    }
 
 
 def _read_killer(raw: bytes) -> dict:

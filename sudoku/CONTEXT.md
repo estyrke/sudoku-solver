@@ -33,7 +33,7 @@ Any other cell sharing a row, column or box with a given cell — the cells whos
 _Avoid_: Neighbor (reserved for adjacency in the Queens context)
 
 **Hint**:
-A single applicable technique's output: either a placement or one or more eliminations, plus the reasoning and the cells/units it turns on. Escalating techniques are tried simplest-first; `find_hint` returns the first that applies.
+A single applicable technique's output: either a placement or one or more eliminations, plus the reasoning and the cells/units it turns on. Escalating techniques are tried simplest-first; `findHint` returns the first that applies.
 _Avoid_: Step, move
 
 ### Killer Sudoku

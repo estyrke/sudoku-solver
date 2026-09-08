@@ -1,5 +1,4 @@
-// Human solving techniques, ordered by difficulty — the TypeScript port of
-// sudoku/solver/techniques.py.
+// Human solving techniques, ordered by difficulty.
 //
 // Each technique is a function `(board, cg) -> Hint | null` where `cg` is the
 // working candidate grid: a candidate set per empty cell. A technique inspects
@@ -12,12 +11,13 @@
 // the player's Pencil marks when present, falling back to Candidates derived
 // from board values (see `workingCandidates` in hint.ts).
 //
-// This slice ports the classic (cage-free) techniques. The Cage-sum and 45-rule
-// techniques are part of the same catalogue and keep their slots in the
-// escalation order below; they arrive with the Killer slice (issue #21), which
-// is also what brings Cage to the TypeScript Board.
+// The catalogue holds the classic techniques and Killer's Cage-sum and 45-rule
+// ones together, in one escalation order — Killer is part of this context, not
+// a separate one (docs/adr/0002-killer-sudoku-extends-sudoku-context.md). On a
+// board with no cages the Killer techniques return `null` immediately, so a
+// classic board pays nothing for them.
 
-import { Board, boxIndex, cellName, idx, rc, type Coord } from "./model.ts";
+import { Board, Cage, DIGITS, boxIndex, cellName, idx, rc, type Coord } from "./model.ts";
 
 /**
  * Candidates per empty cell, keyed by row-major index.
@@ -94,6 +94,7 @@ function intersects(a: Set<number>, b: Set<number>): boolean {
 /** The placed `d` that makes it impossible at `cell`, and how it relates. */
 function ruledOutBy(board: Board, cell: Coord, d: number): [Coord, string] | null {
   const [r, c] = cell;
+  const cage = board.cageAt(r, c);
   // Peers come back as indices, so ascending index is Python's `sorted(peers)`
   // over coordinate tuples — the same cell is blamed either way.
   for (const p of sortNums(board.peers(r, c))) {
@@ -102,7 +103,7 @@ function ruledOutBy(board: Board, cell: Coord, d: number): [Coord, string] | nul
     if (pr === r) return [[pr, pc], `row ${r + 1}`];
     if (pc === c) return [[pr, pc], `column ${c + 1}`];
     if (boxIndex(pr, pc) === boxIndex(r, c)) return [[pr, pc], `box ${boxIndex(r, c) + 1}`];
-    // Killer's cage-mate branch belongs here, and arrives with issue #21.
+    if (cage !== null && cage.indices.has(p)) return [[pr, pc], cageLabel(cage)];
   }
   return null;
 }
@@ -116,6 +117,10 @@ function ruledOutBy(board: Board, cell: Coord, d: number): [Coord, string] | nul
  * someone who can still see an 8 pencilled in r8c8. Correcting the marks is the
  * missing first step, not something to apply behind the player's back
  * (`sudoku/CONTEXT.md`, *Pencil mark*).
+ *
+ * It matters most on Killer boards, where a cage-mate rules out a digit even
+ * though it shares no row, column or box — a constraint most apps' auto-notes
+ * don't apply.
  */
 export function impossiblePencilMark(board: Board, _cg: CandGrid): Hint | null {
   for (let i = 0; i < 81; i++) {
@@ -394,6 +399,524 @@ export function xWing(_board: Board, cg: CandGrid): Hint | null {
   return search(true) ?? search(false);
 }
 
+
+// ---------------------------------------------------------------------------
+// Killer Sudoku: cage sums
+// ---------------------------------------------------------------------------
+
+/** `the 15-cage at r1c1` — anchored on the topmost-then-leftmost cell, the same
+ * one the UI prints the sum in. */
+function cageLabel(cage: Cage): string {
+  return `the ${cage.sum}-cage at ${cellName(...cage.anchor)}`;
+}
+
+/**
+ * Whether `digits` can be dealt one-each to `cells` respecting candidates.
+ *
+ * A combination can total correctly yet still be impossible — e.g. {1,3} is no
+ * use if both cells have already lost the 3. Matching cells to digits rules that
+ * out, keeping eliminations sound.
+ */
+function dealsOut(digits: readonly number[], cells: Coord[], cg: CandGrid): boolean {
+  const owner = new Map<number, Coord>(); // index into digits -> cell holding it
+
+  const place = (cell: Coord, tried: Set<number>): boolean => {
+    for (let i = 0; i < digits.length; i++) {
+      if (tried.has(i) || !cand(cg, cell).has(digits[i])) continue;
+      tried.add(i);
+      if (!owner.has(i) || place(owner.get(i)!, tried)) {
+        owner.set(i, cell);
+        return true;
+      }
+    }
+    return false;
+  };
+
+  return cells.every((cell) => place(cell, new Set()));
+}
+
+export interface CageOptions {
+  empties: Coord[];
+  /** Per empty cell (by row-major index): the digits some workable set puts there. */
+  allowed: Map<number, Set<number>>;
+  combos: number[][];
+  remaining: number;
+}
+
+/** For one cage: its empty cells, the digits actually placeable in each, and the
+ * combinations considered. `null` when the cage has nothing to say.
+ *
+ * Exported for the tests, which check that a cage with too many workable sets is
+ * left alone — the number of sets is the reason the technique stays quiet, so
+ * asserting on it directly beats asserting on the silence. */
+export function cageOptions(board: Board, cg: CandGrid, cage: Cage): CageOptions | null {
+  const open = cage.cells.filter(([r, c]) => cg.has(idx(r, c)));
+  if (open.length === 0) return null;
+  const filled: number[] = [];
+  for (const [r, c] of cage.cells) {
+    const v = board.value(r, c);
+    if (v !== null) filled.push(v);
+  }
+  const remaining = cage.sum - filled.reduce((a, b) => a + b, 0);
+  const used = new Set(filled);
+  const pool = DIGITS.filter((d) => !used.has(d));
+
+  const combos: number[][] = [];
+  const allowed = new Map<number, Set<number>>(open.map(([r, c]) => [idx(r, c), new Set<number>()]));
+  for (const combo of combinations(pool, open.length)) {
+    if (combo.reduce((a, b) => a + b, 0) !== remaining) continue;
+    if (!dealsOut(combo, open, cg)) continue;
+    combos.push(combo);
+    for (const cell of open) {
+      const mine = allowed.get(idx(cell[0], cell[1]))!;
+      const others = open.filter((x) => idx(x[0], x[1]) !== idx(cell[0], cell[1]));
+      for (const d of combo) {
+        if (!cand(cg, cell).has(d) || mine.has(d)) continue;
+        // A combination's digits are distinct, so this drops exactly the one.
+        const rest = combo.filter((x) => x !== d);
+        if (dealsOut(rest, others, cg)) mine.add(d);
+      }
+    }
+  }
+  // No workable set at all means the cage is unsatisfiable; that's isValid's
+  // business, not a hint's.
+  if (combos.length === 0) return null;
+  return { empties: open, allowed, combos, remaining };
+}
+
+function comboList(combos: number[][]): string {
+  return combos.map((combo) => "{" + combo.join("") + "}").join(", ");
+}
+
+// The combination list is checked by hand — the player has to hold every set in
+// their head and confirm the digit really is absent from (or present in) all of
+// them. Past a handful that stops being an explanation and becomes an assertion:
+// "the only workable sets are {13579}, {13678}, {14569} and 17 more, so 2 cannot
+// go in r4c8" is impossible to verify, and impossible to act on if the reason it
+// fires is a mistyped pencil mark rather than a real deduction. So a cage whose
+// reasoning is longer than this is left alone: another technique speaks instead,
+// or the hint engine escalates past cage sums entirely.
+export const MAX_LISTED_COMBOS = 4;
+
+/**
+ * The loosest bounds on what `cells` can total between them.
+ *
+ * Bounds the sum by the smallest and the largest distinct digits still pencilled
+ * anywhere across the group. That is weaker than a true per-cell assignment — it
+ * admits totals no real placement reaches — but it is only ever used to *prove* a
+ * digit impossible, and a bound that admits too much never proves too much. It
+ * buys a one-line argument the player can check against their own marks instead
+ * of a list of sets they have to take on trust.
+ */
+function reach(cells: Coord[], cg: CandGrid): [number, number] | null {
+  if (cells.length === 0) return null;
+  const union = new Set<number>();
+  for (const cell of cells) for (const d of cand(cg, cell)) union.add(d);
+  const pool = sortNums(union);
+  if (pool.length < cells.length) return null;
+  const k = cells.length;
+  const sum = (ns: number[]) => ns.reduce((a, b) => a + b, 0);
+  return [sum(pool.slice(0, k)), sum(pool.slice(pool.length - k))];
+}
+
+function cellsPhrase(n: number): string {
+  return n === 1 ? "cell" : `${n} cells`;
+}
+
+/**
+ * Digits `cell` can't hold because of what the rest of the cage must total.
+ *
+ * What the other cells can reach pins `cell` between two values, so a whole run
+ * of digits falls at once — the elimination and its reason are the same sentence.
+ */
+export function squeezedOut(
+  cell: Coord,
+  group: Coord[],
+  cg: CandGrid,
+  remaining: number,
+): [number[], string] | null {
+  const others = group.filter((x) => idx(x[0], x[1]) !== idx(cell[0], cell[1]));
+  const bounds = reach(others, cg);
+  if (bounds === null) return null;
+  const [low, high] = bounds;
+  const n = cellsPhrase(others.length);
+  const tooSmall = sortNums([...cand(cg, cell)].filter((d) => remaining - d > high));
+  if (tooSmall.length > 0) {
+    return [
+      tooSmall,
+      `The other ${n} can total at most ${high}, so ${cellName(...cell)} ` +
+        `must be at least ${remaining - high}`,
+    ];
+  }
+  const tooBig = sortNums([...cand(cg, cell)].filter((d) => remaining - d < low));
+  if (tooBig.length > 0) {
+    return [
+      tooBig,
+      `The other ${n} can total at least ${low}, so ${cellName(...cell)} ` +
+        `must be at most ${remaining - low}`,
+    ];
+  }
+  return null;
+}
+
+/**
+ * Restrict a cage's candidates to digit sets that can reach its sum.
+ *
+ * Purely about sum reachability — a cage's no-repeat rule is already handled by
+ * cage-mates being peers, so it never has to be re-derived here.
+ *
+ * Cages are worked cheapest-first rather than in board order, and the wording
+ * prefers a bound over a list of sets, because a hint nobody can follow is worse
+ * than no hint: it leaves the player unable to tell a real deduction from a
+ * consequence of one bad pencil mark.
+ */
+export function cageSum(board: Board, cg: CandGrid): Hint | null {
+  if (board.cages.length === 0) return null;
+  const analysed: [Cage, CageOptions][] = [];
+  for (const cage of board.cages) {
+    const options = cageOptions(board, cg, cage);
+    if (options !== null) analysed.push([cage, options]);
+  }
+  // Fewest sets to check first, then fewest cells — the shortest argument wins.
+  // Both languages sort stably, so cages that tie stay in board order.
+  analysed.sort(
+    ([, a], [, b]) => a.combos.length - b.combos.length || a.empties.length - b.empties.length,
+  );
+  const short = analysed.filter(([, a]) => a.combos.length <= MAX_LISTED_COMBOS);
+
+  // A cell only one digit can occupy is the stronger deduction, so look first.
+  for (const [cage, { empties: open, allowed, combos, remaining }] of short) {
+    for (const cell of open) {
+      const mine = allowed.get(idx(cell[0], cell[1]))!;
+      if (mine.size === 1 && cand(cg, cell).size > 1) {
+        const d = [...mine][0];
+        return {
+          technique: "Cage sum",
+          level: 3,
+          action: "place",
+          cells: [cell],
+          digits: [d],
+          units: [cageLabel(cage)],
+          explanation:
+            `${cageLabel(cage)} needs ${remaining} more across ` +
+            `${cellsPhrase(open.length)}. The only workable sets are ` +
+            `${comboList(combos)}, and every one of them puts ${d} ` +
+            `in ${cellName(...cell)}.`,
+        };
+      }
+    }
+  }
+
+  // Digits the cage's arithmetic squeezes out are one line to check, so they beat
+  // any set list — even a set list from a cage with fewer combinations.
+  for (const [cage, { empties: open, allowed, remaining }] of analysed) {
+    for (const cell of open) {
+      if (allowed.get(idx(cell[0], cell[1]))!.size === 0) continue;
+      const squeezed = squeezedOut(cell, open, cg, remaining);
+      if (squeezed === null) continue;
+      const [gone, why] = squeezed;
+      return {
+        technique: "Cage sum",
+        level: 3,
+        action: "eliminate",
+        cells: [cell],
+        digits: gone,
+        units: [cageLabel(cage)],
+        explanation:
+          `${cageLabel(cage)} needs ${remaining} more across ` +
+          `${cellsPhrase(open.length)}. ${why} — ` +
+          `${gone.join(", ")} cannot go there.`,
+      };
+    }
+  }
+
+  for (const [cage, { empties: open, allowed, combos, remaining }] of short) {
+    for (const cell of open) {
+      const mine = allowed.get(idx(cell[0], cell[1]))!;
+      const gone = sortNums([...cand(cg, cell)].filter((d) => !mine.has(d)));
+      if (gone.length > 0 && mine.size > 0) {
+        return {
+          technique: "Cage sum",
+          level: 3,
+          action: "eliminate",
+          cells: [cell],
+          digits: gone,
+          units: [cageLabel(cage)],
+          explanation:
+            `${cageLabel(cage)} needs ${remaining} more across ` +
+            `${cellsPhrase(open.length)}. The only workable sets are ` +
+            `${comboList(combos)}, so ` +
+            `${gone.join(", ")} cannot go in ${cellName(...cell)}.`,
+        };
+      }
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Killer Sudoku: the 45-rule (innies and outies)
+// ---------------------------------------------------------------------------
+
+/** 45 — every unit holds each digit exactly once. */
+export const UNIT_TOTAL = DIGITS.reduce((a, b) => a + b, 0);
+
+/** A span of the board, by row-major index, and what its cells must total. */
+export interface Span {
+  label: string;
+  cells: Set<number>;
+  total: number;
+}
+
+function covered(cages: Cage[]): Set<number> {
+  const out = new Set<number>();
+  for (const cage of cages) for (const i of cage.indices) out.add(i);
+  return out;
+}
+
+const isSubset = (a: ReadonlySet<number>, b: ReadonlySet<number>): boolean => {
+  for (const i of a) if (!b.has(i)) return false;
+  return true;
+};
+
+const meets = (a: ReadonlySet<number>, b: ReadonlySet<number>): boolean => {
+  for (const i of a) if (b.has(i)) return true;
+  return false;
+};
+
+const without = (a: ReadonlySet<number>, b: ReadonlySet<number>): Set<number> => {
+  const out = new Set<number>();
+  for (const i of a) if (!b.has(i)) out.add(i);
+  return out;
+};
+
+// How many units a 45-rule span may cover. Two and three rows (or columns) are
+// where the rule earns its keep: a single row often has no cage lying wholly
+// inside it, while a band of two or three usually does, and the arithmetic
+// closes on a band exactly as it does on one unit. On the board that prompted
+// this, every single unit was silent and rows 1-2 immediately pinned a cell.
+export const MAX_BAND = 3;
+
+/**
+ * Every span the 45-rule can be applied to.
+ *
+ * The nine rows, columns and boxes, plus runs of two and three adjacent rows or
+ * columns. Adjacent only because that is where cages cluster: any set of whole
+ * units is arithmetically valid, but scanning all of them costs far more and
+ * finds almost nothing.
+ */
+export function* spans(board: Board): Generator<Span> {
+  for (const [label, cells] of board.units()) {
+    yield { label, cells: new Set(cells.map(([r, c]) => idx(r, c))), total: UNIT_TOTAL };
+  }
+  for (let n = 2; n <= MAX_BAND; n++) {
+    for (let start = 0; start <= 9 - n; start++) {
+      const range = `${start + 1}-${start + n}`;
+      const rows = new Set<number>();
+      const cols = new Set<number>();
+      for (let k = start; k < start + n; k++) {
+        for (let j = 0; j < 9; j++) {
+          rows.add(idx(k, j));
+          cols.add(idx(j, k));
+        }
+      }
+      yield { label: `rows ${range}`, cells: rows, total: UNIT_TOTAL * n };
+      yield { label: `columns ${range}`, cells: cols, total: UNIT_TOTAL * n };
+    }
+  }
+}
+
+/** What a span's 45-rule arithmetic leaves over: `kind`, the cells, what they
+ * owe, and the cages' own total (carried so the explanation can show the
+ * subtraction rather than assert its result). */
+export interface Leftover {
+  kind: "innie" | "outie";
+  cells: Set<number>;
+  owed: number;
+  held: number;
+}
+
+/**
+ * The cells a span's 45-rule arithmetic leaves over, and what they total.
+ *
+ * The *innies* are the span's cells no cage inside it covers; the *outies* are
+ * the cells outside it that the cages meeting it spill onto.
+ */
+export function* unaccounted(board: Board, span: Set<number>, total: number): Generator<Leftover> {
+  const inside = board.cages.filter((cage) => isSubset(cage.indices, span));
+  const innies = without(span, covered(inside));
+  if (innies.size > 0) {
+    const held = inside.reduce((n, cage) => n + cage.sum, 0);
+    yield { kind: "innie", cells: innies, owed: total - held, held };
+  }
+
+  const touching = board.cages.filter((cage) => meets(cage.indices, span));
+  const reachable = covered(touching);
+  if (isSubset(span, reachable)) {
+    // Otherwise part of the span is uncaged and nothing closes.
+    const outies = without(reachable, span);
+    if (outies.size > 0) {
+      const held = touching.reduce((n, cage) => n + cage.sum, 0);
+      yield { kind: "outie", cells: outies, owed: held - total, held };
+    }
+  }
+}
+
+/** Whether `value` at `cell` is a placement worth reporting. */
+export function fortyFivePlacement(cg: CandGrid, cell: Coord, value: number): boolean {
+  const cands = cg.get(idx(cell[0], cell[1]));
+  if (!(value >= 1 && value <= 9) || cands === undefined) return false;
+  if (!cands.has(value)) return false; // contradiction, not a hint — isValid's business
+  return cands.size > 1; // a lone candidate is a naked single, reported simpler
+}
+
+/**
+ * Pin a single innie or outie by the 45-rule.
+ *
+ * Two arithmetic shapes, both from "every unit totals 45":
+ *
+ * *Innie* — the cages lying wholly inside a span cover all but one of its cells,
+ * so that cell holds `total - (those cages' sum)`.
+ *
+ * *Outie* — the cages meeting a span cover it entirely and spill outside it by
+ * exactly one cell, so that cell holds `(their sum) - total`.
+ *
+ * Applied to runs of up to three rows or columns as well as to single units; see
+ * `spans`. When more than one cell is left over the difference constrains a set
+ * rather than pinning a value — that is `fortyFiveSets`, which is a harder read
+ * and sits much later in the catalogue.
+ */
+export function fortyFiveRule(board: Board, cg: CandGrid): Hint | null {
+  if (board.cages.length === 0) return null;
+
+  for (const { label, cells: span, total } of spans(board)) {
+    for (const { kind, cells, owed, held } of unaccounted(board, span, total)) {
+      if (cells.size !== 1) continue;
+      const cell = rc(cells.values().next().value as number);
+      if (!fortyFivePlacement(cg, cell, owed)) continue;
+      const name = cellName(...cell);
+      const why =
+        kind === "innie"
+          ? `The cages wholly inside ${label} total ${held} and cover all ` +
+            `but ${name}. ${label} must total ${total}, so ${name} is ` +
+            `${total} − ${held} = ${owed}.`
+          : `The cages meeting ${label} total ${held} and cover it ` +
+            `entirely, sticking out only into ${name}. ${label} must total ` +
+            `${total}, so ${name} is ${held} − ${total} = ${owed}.`;
+      return {
+        technique: `45-rule (${kind})`,
+        level: 4,
+        action: "place",
+        cells: [cell],
+        digits: [owed],
+        units: [label],
+        explanation: why,
+      };
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Killer Sudoku: the 45-rule over several cells at once
+// ---------------------------------------------------------------------------
+
+// Beyond four the total says almost nothing: the reachable range is nearly the
+// whole of 1-9 for every cell, so the bound never bites and the work is wasted.
+export const MAX_LEFTOVER = 4;
+
+/**
+ * Whether these cells are guaranteed to hold different digits.
+ *
+ * They are if they share a row, a column or a box. It matters because the bound
+ * in `squeezedOut` sums *distinct* digits: allow repeats and the true minimum
+ * drops to k copies of the smallest, and the elimination is unsound. Innies of a
+ * single unit always qualify; innies of a wider span and outies often don't, and
+ * those are simply left alone.
+ */
+export function allDistinct(cells: Coord[]): boolean {
+  const size = (ns: number[]) => new Set(ns).size;
+  return (
+    size(cells.map(([r]) => r)) === 1 ||
+    size(cells.map(([, c]) => c)) === 1 ||
+    size(cells.map(([r, c]) => boxIndex(r, c))) === 1
+  );
+}
+
+/**
+ * Use the 45-rule when it leaves several cells over rather than one.
+ *
+ * The leftover cells still have a known total, which is worth two things: if
+ * every one but a single cell has since been filled in, that cell is pinned
+ * after all; and while several are empty, what the others can reach bounds each
+ * one — the same squeeze `cageSum` applies within a cage, applied to a group the
+ * cages don't draw.
+ *
+ * Last in the catalogue. It is the hardest of these to see by hand, and offering
+ * it before a naked pair would be answering a question nobody asked.
+ */
+export function fortyFiveSets(board: Board, cg: CandGrid): Hint | null {
+  if (board.cages.length === 0) return null;
+
+  for (const { label, cells: span, total } of spans(board)) {
+    for (const { kind, cells, owed } of unaccounted(board, span, total)) {
+      if (cells.size < 2 || cells.size > MAX_LEFTOVER) continue;
+      const group = sortCoords([...cells].map(rc));
+      const filled: number[] = [];
+      for (const [r, c] of group) {
+        const v = board.value(r, c);
+        if (v !== null) filled.push(v);
+      }
+      const open = group.filter(([r, c]) => cg.has(idx(r, c)));
+      // A cell that is neither empty-with-candidates nor filled.
+      if (open.length + filled.length !== cells.size) continue;
+      const remaining = owed - filled.reduce((a, b) => a + b, 0);
+      const where = `${kind === "innie" ? "inside" : "spilling out of"} ${label}`;
+
+      if (open.length === 1) {
+        const cell = open[0];
+        if (fortyFivePlacement(cg, cell, remaining)) {
+          return {
+            technique: `45-rule (${kind} set)`,
+            level: 7,
+            action: "place",
+            cells: [cell],
+            digits: [remaining],
+            units: [label],
+            explanation:
+              `The ${cells.size} cells ${where} must total ${owed}, ` +
+              `and all but ${cellName(...cell)} are filled in — ` +
+              `leaving ${remaining} for it.`,
+          };
+        }
+        continue;
+      }
+
+      // Without distinctness the bound below would be unsound.
+      if (!allDistinct(open)) continue;
+      for (const cell of open) {
+        const squeezed = squeezedOut(cell, open, cg, remaining);
+        if (squeezed === null) continue;
+        const [gone, why] = squeezed;
+        return {
+          technique: `45-rule (${kind} set)`,
+          level: 7,
+          action: "eliminate",
+          cells: [cell],
+          digits: gone,
+          units: [label],
+          explanation:
+            `${label} must total ${total}, which leaves ` +
+            `${names(group)} ${where} to make ${owed}` +
+            (filled.length > 0 ? ` — ${remaining} once the filled ones are taken off` : "") +
+            `. ${why} — ${gone.join(", ")} cannot go there.`,
+        };
+      }
+    }
+  }
+  return null;
+}
+
 export type Technique = (board: Board, cg: CandGrid) => Hint | null;
 
 /**
@@ -401,9 +924,8 @@ export type Technique = (board: Board, cg: CandGrid) => Hint | null;
  * hit, so this order *is* the behaviour: which technique fires on a given board
  * follows from it, and the tests pin it.
  *
- * Killer's `cageSum` sits between the singles and the subsets, and its
- * `fortyFiveRule` directly after; `fortyFiveSets` goes last of all. Those slots
- * are reserved rather than filled — they arrive with issue #21.
+ * Killer's `cageSum` sits between the singles and the subsets, `fortyFiveRule`
+ * directly after it, and `fortyFiveSets` last of all.
  */
 export const TECHNIQUES: Technique[] = [
   // First: the player's own notes must be right before anything derived from
@@ -411,8 +933,8 @@ export const TECHNIQUES: Technique[] = [
   impossiblePencilMark,
   nakedSingle,
   hiddenSingle,
-  // cageSum,        (Killer — issue #21)
-  // fortyFiveRule,  (Killer — issue #21)
+  cageSum,
+  fortyFiveRule,
   nakedPair,
   nakedTriple,
   hiddenPair,
@@ -421,5 +943,7 @@ export const TECHNIQUES: Technique[] = [
   pointing,
   claiming,
   xWing,
-  // fortyFiveSets,  (Killer — issue #21; last, being the hardest to see by hand)
+  // Last: the hardest of these to see by hand, and it only ever fires when
+  // everything simpler has already been exhausted.
+  fortyFiveSets,
 ];
