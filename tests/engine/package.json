@@ -1,0 +1,10 @@
+{
+  "name": "sudoku-solver-engine-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure-logic unit tests for web/sudoku's TypeScript engine (Board, solve, ...). Runs straight off the .ts source via Node's native type-stripping — no jsdom, no build step, no dependencies of its own. Kept apart from tests/ui, which drives the DOM-facing page modules instead.",
+  "scripts": {
+    "test": "node --experimental-strip-types --test"
+  }
+}

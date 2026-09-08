@@ -174,15 +174,6 @@ def hint_endpoint(data: BoardModel) -> dict:
     }
 
 
-@app.post("/solve")
-def solve_endpoint(data: BoardModel) -> dict:
-    board = _board_from_model(data)
-    solved = solve(board)
-    if solved is None:
-        return {"ok": False, "reason": "No solution exists for this board."}
-    return {"ok": True, "board": solved.to_dict()}
-
-
 @app.post("/parse")
 async def parse_endpoint(image: UploadFile = File(...)) -> dict:
     """Read a board from an uploaded screenshot. Wired to the CV reader, imported
