@@ -45,7 +45,7 @@ An orthogonally-contiguous (edge-adjacent, never diagonal) group of 2 or more ce
 _Avoid_: Region (the Queens context's term for a visually similar but differently-ruled grouping — a Region takes exactly one Queen, not a no-repeat digit set), block, group
 
 **Span**:
-One or more whole Units taken together, treated as a single target for the 45-rule: a single row, column or Box, or several adjacent rows or columns. Its digits total 45 per Unit it contains.
+One or more whole Units taken together, treated as a single target for the 45-rule: a single row, column or Box; two or three adjacent rows or columns; or two Boxes sharing a band or a stack. Its digits total 45 per Unit it contains.
 _Avoid_: Region (reserved for the Queens context's irregular grouping — see Box), band, chute
 
 **45-rule**:

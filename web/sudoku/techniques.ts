@@ -55,7 +55,7 @@ function names(cells: Coord[]): string {
   return cells.map(([r, c]) => cellName(r, c)).join(", ");
 }
 
-function empties(cells: Coord[], cg: CandGrid): Coord[] {
+function empties(cells: readonly Coord[], cg: CandGrid): Coord[] {
   return cells.filter(([r, c]) => cg.has(idx(r, c)));
 }
 
@@ -443,21 +443,29 @@ export interface CageOptions {
   remaining: number;
 }
 
-/** For one cage: its empty cells, the digits actually placeable in each, and the
- * combinations considered. `null` when the cage has nothing to say.
+/**
+ * For one group of cells that must hold *distinct* digits totalling `total`: its
+ * empty cells, the digits actually placeable in each, and the combinations
+ * considered. `null` when the group has nothing to say.
  *
- * Exported for the tests, which check that a cage with too many workable sets is
- * left alone — the number of sets is the reason the technique stays quiet, so
- * asserting on it directly beats asserting on the silence. */
-export function cageOptions(board: Board, cg: CandGrid, cage: Cage): CageOptions | null {
-  const open = cage.cells.filter(([r, c]) => cg.has(idx(r, c)));
+ * Distinctness is the caller's promise, not something checked here. A cage has
+ * it by rule; a 45-rule leftover only when its cells share a unit, which is what
+ * `allDistinct` is for.
+ */
+export function groupOptions(
+  board: Board,
+  cg: CandGrid,
+  cells: readonly Coord[],
+  total: number,
+): CageOptions | null {
+  const open = empties(cells, cg);
   if (open.length === 0) return null;
   const filled: number[] = [];
-  for (const [r, c] of cage.cells) {
+  for (const [r, c] of cells) {
     const v = board.value(r, c);
     if (v !== null) filled.push(v);
   }
-  const remaining = cage.sum - filled.reduce((a, b) => a + b, 0);
+  const remaining = total - filled.reduce((a, b) => a + b, 0);
   const used = new Set(filled);
   const pool = DIGITS.filter((d) => !used.has(d));
 
@@ -478,10 +486,19 @@ export function cageOptions(board: Board, cg: CandGrid, cage: Cage): CageOptions
       }
     }
   }
-  // No workable set at all means the cage is unsatisfiable; that's isValid's
+  // No workable set at all means the group is unsatisfiable; that's isValid's
   // business, not a hint's.
   if (combos.length === 0) return null;
   return { empties: open, allowed, combos, remaining };
+}
+
+/** `groupOptions` for a cage, whose distinctness and total are its own.
+ *
+ * Exported for the tests, which check what a cage with many workable sets does —
+ * the number of sets decides how the hint is *worded*, so asserting on it
+ * directly beats inferring it from the wording. */
+export function cageOptions(board: Board, cg: CandGrid, cage: Cage): CageOptions | null {
+  return groupOptions(board, cg, cage.cells, cage.sum);
 }
 
 function comboList(combos: number[][]): string {
@@ -493,10 +510,27 @@ function comboList(combos: number[][]): string {
 // them. Past a handful that stops being an explanation and becomes an assertion:
 // "the only workable sets are {13579}, {13678}, {14569} and 17 more, so 2 cannot
 // go in r4c8" is impossible to verify, and impossible to act on if the reason it
-// fires is a mistyped pencil mark rather than a real deduction. So a cage whose
-// reasoning is longer than this is left alone: another technique speaks instead,
-// or the hint engine escalates past cage sums entirely.
+// fires is a mistyped pencil mark rather than a real deduction.
+//
+// So this caps what gets *listed*, not what gets deduced. A cage with more sets
+// than this still speaks, but it states the consequence instead of the working:
+// "there are 17 ways to make that total and none of them puts a 2 in r6c6". The
+// player checks the one claim rather than re-deriving seventeen sets, and the
+// board moves. Capping the deduction itself was the earlier behaviour and it
+// cost real boards: a 20-cage over four cells is exactly where combination
+// analysis earns its keep and exactly where the list is too long to print.
 export const MAX_LISTED_COMBOS = 4;
+
+/** `1`, `1 or 2`, `1, 2 or 3` — for a claim about digits rather than a list. */
+function orList(nums: number[]): string {
+  if (nums.length === 1) return `${nums[0]}`;
+  return `${nums.slice(0, -1).join(", ")} or ${nums[nums.length - 1]}`;
+}
+
+/** How many ways a group can make its total: `2 ways`, `17 ways`. */
+function waysPhrase(n: number): string {
+  return n === 1 ? "1 way" : `${n} ways`;
+}
 
 /**
  * The loosest bounds on what `cells` can total between them.
@@ -508,7 +542,7 @@ export const MAX_LISTED_COMBOS = 4;
  * buys a one-line argument the player can check against their own marks instead
  * of a list of sets they have to take on trust.
  */
-function reach(cells: Coord[], cg: CandGrid): [number, number] | null {
+function reach(cells: readonly Coord[], cg: CandGrid): [number, number] | null {
   if (cells.length === 0) return null;
   const union = new Set<number>();
   for (const cell of cells) for (const d of cand(cg, cell)) union.add(d);
@@ -531,7 +565,7 @@ function cellsPhrase(n: number): string {
  */
 export function squeezedOut(
   cell: Coord,
-  group: Coord[],
+  group: readonly Coord[],
   cg: CandGrid,
   remaining: number,
 ): [number[], string] | null {
@@ -569,6 +603,12 @@ export function squeezedOut(
  * prefers a bound over a list of sets, because a hint nobody can follow is worse
  * than no hint: it leaves the player unable to tell a real deduction from a
  * consequence of one bad pencil mark.
+ *
+ * Four passes, in the order a player would want them: a forced placement; a
+ * digit the arithmetic squeezes out in one line; a short list of sets; and last
+ * a cage whose sets are too many to list, which states its conclusion instead
+ * (see `MAX_LISTED_COMBOS`). The last pass is the one that carries a hard board
+ * — the earlier three all go quiet long before the cage arithmetic runs out.
  */
 export function cageSum(board: Board, cg: CandGrid): Hint | null {
   if (board.cages.length === 0) return null;
@@ -651,6 +691,31 @@ export function cageSum(board: Board, cg: CandGrid): Hint | null {
       }
     }
   }
+
+  // Last: cages with more sets than anyone will check. Same deduction, stated
+  // as its conclusion rather than its working — one claim to verify instead of
+  // a list to re-derive.
+  for (const [cage, { empties: open, allowed, combos, remaining }] of analysed) {
+    if (combos.length <= MAX_LISTED_COMBOS) continue;
+    for (const cell of open) {
+      const mine = allowed.get(idx(cell[0], cell[1]))!;
+      const gone = sortNums([...cand(cg, cell)].filter((d) => !mine.has(d)));
+      if (gone.length > 0 && mine.size > 0) {
+        return {
+          technique: "Cage sum",
+          level: 3,
+          action: "eliminate",
+          cells: [cell],
+          digits: gone,
+          units: [cageLabel(cage)],
+          explanation:
+            `${cageLabel(cage)} needs ${remaining} more across ` +
+            `${cellsPhrase(open.length)}. There are ${waysPhrase(combos.length)} to do that, ` +
+            `and not one of them puts ${orList(gone)} in ${cellName(...cell)}.`,
+        };
+      }
+    }
+  }
   return null;
 }
 
@@ -700,10 +765,17 @@ export const MAX_BAND = 3;
 /**
  * Every span the 45-rule can be applied to.
  *
- * The nine rows, columns and boxes, plus runs of two and three adjacent rows or
- * columns. Adjacent only because that is where cages cluster: any set of whole
- * units is arithmetically valid, but scanning all of them costs far more and
- * finds almost nothing.
+ * The nine rows, columns and boxes; runs of two and three adjacent rows or
+ * columns; and pairs of boxes sharing a band or a stack. Adjacent only because
+ * that is where cages cluster: any set of whole units is arithmetically valid,
+ * but scanning all of them costs far more and finds almost nothing.
+ *
+ * Box pairs are the cheap half of a chute. All three boxes of a band are just
+ * that band's rows, already yielded above — but two of them are a shape no row
+ * or column span has, and cages that straddle a box boundary without leaving
+ * the band close on it when they close on nothing else. On the Killer board that
+ * prompted this, boxes 1+2 left three innies totalling 7, which was the whole
+ * unlock; every row, column and band on that board was silent.
  */
 export function* spans(board: Board): Generator<Span> {
   for (const [label, cells] of board.units()) {
@@ -722,6 +794,24 @@ export function* spans(board: Board): Generator<Span> {
       }
       yield { label: `rows ${range}`, cells: rows, total: UNIT_TOTAL * n };
       yield { label: `columns ${range}`, cells: cols, total: UNIT_TOTAL * n };
+    }
+  }
+  for (const [a, b] of boxPairs()) {
+    const cells = new Set<number>();
+    for (const box of [a, b]) {
+      for (const [r, c] of Board.boxCells(box)) cells.add(idx(r, c));
+    }
+    yield { label: `boxes ${a + 1}+${b + 1}`, cells, total: UNIT_TOTAL * 2 };
+  }
+}
+
+/** The 18 pairs of boxes sharing a band (1+2, 1+3, 2+3, ...) or a stack. */
+function* boxPairs(): Generator<[number, number]> {
+  for (let group = 0; group < 3; group++) {
+    const band = [0, 1, 2].map((k) => group * 3 + k);
+    const stack = [0, 1, 2].map((k) => k * 3 + group);
+    for (const boxes of [band, stack]) {
+      for (const [a, b] of combinations(boxes, 2)) yield [a, b];
     }
   }
 }
@@ -823,6 +913,14 @@ export function fortyFiveRule(board: Board, cg: CandGrid): Hint | null {
 
 // Beyond four the total says almost nothing: the reachable range is nearly the
 // whole of 1-9 for every cell, so the bound never bites and the work is wasted.
+//
+// Counted over the leftover cells still *empty*, not the whole leftover. It is
+// the unknowns that make the arithmetic go slack, and a five-cell leftover with
+// three digits already written into it is a two-cell problem — a sharp one, and
+// the shape this rule most often closes on late in a board. Gating on the whole
+// group instead hid those completely: column 6 of the board that prompted this
+// leaves five innies owing 25, three of which fill in early, and the two that
+// remain owe 7 between them.
 export const MAX_LEFTOVER = 4;
 
 /**
@@ -843,14 +941,70 @@ export function allDistinct(cells: Coord[]): boolean {
   );
 }
 
+/** A 45-rule leftover worked up into what a technique needs: where it came from,
+ * which of its cells are still empty, and what those owe between them. */
+interface LeftoverGroup {
+  label: string;
+  kind: "innie" | "outie";
+  /** `inside rows 1-2` / `spilling out of box 3` — the phrase explanations use. */
+  where: string;
+  total: number;
+  group: Coord[];
+  open: Coord[];
+  filled: number[];
+  owed: number;
+  /** `owed` less the digits already written into the group. */
+  remaining: number;
+}
+
+/** Every leftover group worth reasoning about, in span order.
+ *
+ * Walked more than once — the squeeze and the combination count are different
+ * strengths of argument, and every group deserves the cheaper one before any
+ * group gets the dearer one. Recomputing beats caching: the whole walk is a few
+ * hundred set operations, and the candidate grid it reads is not stable across
+ * calls anyway.
+ */
+function* leftoverGroups(board: Board, cg: CandGrid): Generator<LeftoverGroup> {
+  for (const { label, cells: span, total } of spans(board)) {
+    for (const { kind, cells, owed } of unaccounted(board, span, total)) {
+      // Fewer than two leftovers is `fortyFiveRule`'s single, reported simpler.
+      if (cells.size < 2) continue;
+      const group = sortCoords([...cells].map(rc));
+      const filled: number[] = [];
+      for (const [r, c] of group) {
+        const v = board.value(r, c);
+        if (v !== null) filled.push(v);
+      }
+      const open = empties(group, cg);
+      // A cell that is neither empty-with-candidates nor filled.
+      if (open.length + filled.length !== cells.size) continue;
+      if (open.length > MAX_LEFTOVER) continue;
+      yield {
+        label,
+        kind,
+        where: `${kind === "innie" ? "inside" : "spilling out of"} ${label}`,
+        total,
+        group,
+        open,
+        filled,
+        owed,
+        remaining: owed - filled.reduce((a, b) => a + b, 0),
+      };
+    }
+  }
+}
+
 /**
  * Use the 45-rule when it leaves several cells over rather than one.
  *
- * The leftover cells still have a known total, which is worth two things: if
+ * The leftover cells still have a known total, which is worth three things: if
  * every one but a single cell has since been filled in, that cell is pinned
- * after all; and while several are empty, what the others can reach bounds each
- * one — the same squeeze `cageSum` applies within a cage, applied to a group the
- * cages don't draw.
+ * after all; while several are empty, what the others can reach bounds each one;
+ * and where that bound is too blunt, enumerating the ways the group can make its
+ * total rules out digits the bound leaves standing. The same three strengths of
+ * argument `cageSum` applies within a cage, applied to a group the cages don't
+ * draw.
  *
  * Last in the catalogue. It is the hardest of these to see by hand, and offering
  * it before a naked pair would be answering a question nobody asked.
@@ -858,60 +1012,84 @@ export function allDistinct(cells: Coord[]): boolean {
 export function fortyFiveSets(board: Board, cg: CandGrid): Hint | null {
   if (board.cages.length === 0) return null;
 
-  for (const { label, cells: span, total } of spans(board)) {
-    for (const { kind, cells, owed } of unaccounted(board, span, total)) {
-      if (cells.size < 2 || cells.size > MAX_LEFTOVER) continue;
-      const group = sortCoords([...cells].map(rc));
-      const filled: number[] = [];
-      for (const [r, c] of group) {
-        const v = board.value(r, c);
-        if (v !== null) filled.push(v);
-      }
-      const open = group.filter(([r, c]) => cg.has(idx(r, c)));
-      // A cell that is neither empty-with-candidates nor filled.
-      if (open.length + filled.length !== cells.size) continue;
-      const remaining = owed - filled.reduce((a, b) => a + b, 0);
-      const where = `${kind === "innie" ? "inside" : "spilling out of"} ${label}`;
-
-      if (open.length === 1) {
-        const cell = open[0];
-        if (fortyFivePlacement(cg, cell, remaining)) {
-          return {
-            technique: `45-rule (${kind} set)`,
-            level: 7,
-            action: "place",
-            cells: [cell],
-            digits: [remaining],
-            units: [label],
-            explanation:
-              `The ${cells.size} cells ${where} must total ${owed}, ` +
-              `and all but ${cellName(...cell)} are filled in — ` +
-              `leaving ${remaining} for it.`,
-          };
-        }
-        continue;
-      }
-
-      // Without distinctness the bound below would be unsound.
-      if (!allDistinct(open)) continue;
-      for (const cell of open) {
-        const squeezed = squeezedOut(cell, open, cg, remaining);
-        if (squeezed === null) continue;
-        const [gone, why] = squeezed;
+  for (const { label, kind, where, total, group, open, filled, owed, remaining } of leftoverGroups(
+    board,
+    cg,
+  )) {
+    if (open.length === 1) {
+      const cell = open[0];
+      if (fortyFivePlacement(cg, cell, remaining)) {
         return {
           technique: `45-rule (${kind} set)`,
           level: 7,
-          action: "eliminate",
+          action: "place",
           cells: [cell],
-          digits: gone,
+          digits: [remaining],
           units: [label],
           explanation:
-            `${label} must total ${total}, which leaves ` +
-            `${names(group)} ${where} to make ${owed}` +
-            (filled.length > 0 ? ` — ${remaining} once the filled ones are taken off` : "") +
-            `. ${why} — ${gone.join(", ")} cannot go there.`,
+            `The ${group.length} cells ${where} must total ${owed}, ` +
+            `and all but ${cellName(...cell)} are filled in — ` +
+            `leaving ${remaining} for it.`,
         };
       }
+      continue;
+    }
+
+    // Without distinctness the bound below would be unsound.
+    if (!allDistinct(open)) continue;
+    for (const cell of open) {
+      const squeezed = squeezedOut(cell, open, cg, remaining);
+      if (squeezed === null) continue;
+      const [gone, why] = squeezed;
+      return {
+        technique: `45-rule (${kind} set)`,
+        level: 7,
+        action: "eliminate",
+        cells: [cell],
+        digits: gone,
+        units: [label],
+        explanation:
+          `${label} must total ${total}, which leaves ` +
+          `${names(group)} ${where} to make ${owed}` +
+          (filled.length > 0 ? ` — ${remaining} once the filled ones are taken off` : "") +
+          `. ${why} — ${gone.join(", ")} cannot go there.`,
+      };
+    }
+  }
+
+  // Second walk: what the bound could not reach. Enumerating a group's workable
+  // sets catches digits that sit comfortably inside its min-max range and are
+  // still impossible — the bound sums digits from anywhere in the group, so it
+  // admits totals no real assignment reaches.
+  for (const { label, kind, where, total, group, open, filled, owed, remaining } of leftoverGroups(
+    board,
+    cg,
+  )) {
+    // Distinctness for the same reason as above: the sets are of distinct digits.
+    if (open.length < 2 || !allDistinct(open)) continue;
+    // Only the empty cells are passed, so the group's own filled digits stay in
+    // the pool. They are already gone from any candidate set that shares a unit
+    // with them, and where they don't share one they may legitimately repeat.
+    const options = groupOptions(board, cg, open, remaining);
+    if (options === null) continue;
+    for (const cell of open) {
+      const mine = options.allowed.get(idx(cell[0], cell[1]))!;
+      const gone = sortNums([...cand(cg, cell)].filter((d) => !mine.has(d)));
+      if (gone.length === 0 || mine.size === 0) continue;
+      return {
+        technique: `45-rule (${kind} set)`,
+        level: 7,
+        action: "eliminate",
+        cells: [cell],
+        digits: gone,
+        units: [label],
+        explanation:
+          `${label} must total ${total}, which leaves ` +
+          `${names(group)} ${where} to make ${owed}` +
+          (filled.length > 0 ? ` — ${remaining} once the filled ones are taken off` : "") +
+          `. There are ${waysPhrase(options.combos.length)} to do that, and not one of them ` +
+          `puts ${orList(gone)} in ${cellName(...cell)}.`,
+      };
     }
   }
   return null;

@@ -7,6 +7,8 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 import { Board, Cage, idx, rc, type Coord } from "../../web/sudoku/model.ts";
 import * as T from "../../web/sudoku/techniques.ts";
@@ -31,6 +33,18 @@ const has = (cells: Coord[], cell: Coord): boolean =>
 
 // A board with no values; techniques are driven purely by the synthetic cg we pass.
 const EMPTY = new Board();
+
+/** A reference Killer board as the reader read it — the same files
+ * solver.test.ts solves and tests/test_reader.py pins the read of. */
+const fixture = (name: string): Board =>
+  Board.fromWire(
+    JSON.parse(
+      readFileSync(
+        path.join(import.meta.dirname, "..", "fixtures", "killer_boards", `${name}.json`),
+        "utf8",
+      ),
+    ),
+  );
 
 describe("techniques", () => {
   it("naked single", () => {
@@ -473,10 +487,11 @@ describe("cage sum", () => {
     assert.deepEqual(hint.units, ["the 17-cage at r1c1"]);
   });
 
-  it("keeps quiet rather than listing too many sets", () => {
-    // A hint the player cannot check is worse than no hint. An empty 5-cell
-    // cage totalling 25 has dozens of workable sets and no useful bound, so
-    // there is nothing to say about it that a person could act on.
+  it("keeps quiet when a cage with many sets rules nothing out", () => {
+    // An empty 5-cell cage totalling 25 has dozens of workable sets, no useful
+    // bound, and — because 25 sits squarely in the middle of what five distinct
+    // digits can reach — no digit that every set avoids. Silence here is the
+    // absence of a deduction, not a refusal to state one.
     const cells: Coord[] = [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]];
     const board = new Board(undefined, [new Cage(cells, 25)]);
     const cg = cgOf(board);
@@ -486,6 +501,47 @@ describe("cage sum", () => {
     assert.equal(T.squeezedOut(cells[0], cells, cg, 25), null);
 
     assert.equal(T.cageSum(board, cg), null);
+  });
+
+  // An 18-cage down column 1 whose middle cell has lost its 8 and 9. Seven sets
+  // reach 18, too many to print, and no bound catches anything — but only one of
+  // them holds a 1, and that set needs r2c1 to take an 8 or a 9 the moment the 1
+  // goes anywhere else. So r1c1 and r3c1 cannot be 1.
+  const unlistableCage = (): [Board, CandGrid] => {
+    const board = new Board(undefined, [new Cage([[0, 0], [1, 0], [2, 0]], 18)]);
+    const cg = cgOf(board);
+    cg.get(idx(1, 0))!.delete(8);
+    cg.get(idx(1, 0))!.delete(9);
+    return [board, cg];
+  };
+
+  it("still eliminates when there are too many sets to list", () => {
+    // The deduction that carries a hard Killer board. Capping the *deduction* at
+    // MAX_LISTED_COMBOS rather than the wording left boards like this one dead.
+    const [board, cg] = unlistableCage();
+    const options = T.cageOptions(board, cg, board.cages[0]);
+    assert.ok(options);
+    assert.ok(options.combos.length > T.MAX_LISTED_COMBOS, "wanted an unlistable cage");
+    for (const cell of board.cages[0].cells) {
+      assert.equal(T.squeezedOut(cell, board.cages[0].cells, cg, 18), null, "a bound would do");
+    }
+
+    const hint = T.cageSum(board, cg);
+    assert.ok(hint, "an unlistable cage must still speak");
+    assert.equal(hint.action, "eliminate");
+    assert.deepEqual(hint.cells, [[0, 0]]);
+    assert.deepEqual(hint.digits, [1]);
+  });
+
+  it("states its conclusion rather than listing sets nobody would check", () => {
+    // The wording is the point: one claim to verify, plus how much work it
+    // stands on, instead of seven sets to re-derive.
+    const [board, cg] = unlistableCage();
+    const hint = T.cageSum(board, cg);
+    assert.ok(hint);
+    assert.match(hint.explanation, /There are 7 ways to do that/);
+    assert.match(hint.explanation, /not one of them puts 1 in r1c1/);
+    assert.doesNotMatch(hint.explanation, /\{/, "no set list past the cap");
   });
 
   it("offers the shortest argument first", () => {
@@ -754,6 +810,36 @@ describe("45-rule over bands", () => {
     assert.ok(labels.has("columns 7-9"));
     assert.ok(![...labels].some((label) => label.includes("1-4")));
   });
+
+  it("pairs up boxes that share a band or a stack", () => {
+    const board = new Board(undefined, [new Cage([[0, 0], [0, 1]], 5)]);
+    const spans = new Map([...T.spans(board)].map((s) => [s.label, s]));
+    assert.ok(spans.has("boxes 1+2"), "boxes across a band");
+    assert.ok(spans.has("boxes 1+4"), "boxes down a stack");
+    assert.ok(spans.has("boxes 1+3"), "the two ends of a band");
+    // Boxes sharing neither band nor stack are too far apart to close on.
+    assert.ok(!spans.has("boxes 1+5"));
+
+    const pair = spans.get("boxes 1+2")!;
+    assert.equal(pair.cells.size, 18);
+    assert.equal(pair.total, 2 * T.UNIT_TOTAL);
+    // Rows 1-3 are boxes 1+2+3, so a whole band adds nothing a pair doesn't.
+    assert.ok(![...spans.keys()].some((label) => label === "boxes 1+2+3"));
+  });
+
+  it("finds an innie set no row, column or single box would have", () => {
+    // Boxes 1+2 total 90. Six cages lie wholly inside them and total 83, leaving
+    // r3c1, r3c2 and r3c6 to make 7 between them — the deduction that unlocked
+    // tests/fixtures/killer_boards/puzzle_page_killer_board4.json, on which
+    // every row, column and single box was silent.
+    const board = fixture("puzzle_page_killer_board4");
+    const boxPair = [...T.spans(board)].find((s) => s.label === "boxes 1+2")!;
+    const [innies] = [...T.unaccounted(board, boxPair.cells, boxPair.total)];
+    assert.equal(innies.kind, "innie");
+    assert.equal(innies.held, 83);
+    assert.equal(innies.owed, 7);
+    assert.deepEqual([...innies.cells].map(rc), [[2, 0], [2, 1], [2, 5]]);
+  });
 });
 
 /** Cages covering seven of row 1, totalling 28 — so r1c8 and r1c9 make 17. */
@@ -786,6 +872,53 @@ describe("45-rule over several cells", () => {
     assert.deepEqual(hint.cells, [[0, 7]]);
     assert.deepEqual(hint.digits, [8]);
     assert.match(hint.explanation, /leaving 8 for it/);
+  });
+
+  it("enumerates when the bound is too blunt", () => {
+    // Six of row 1 caged at 27, leaving r1c7, r1c8 and r1c9 to make 18. Rub the
+    // 8 and 9 out of r1c8 and no bound catches anything — it sums the smallest
+    // and largest digits pencilled *anywhere* in the trio, which still spans
+    // 1 to 9. Enumerating does: {189} is the only set holding a 1, and it needs
+    // r1c8 to take the 8 or the 9 unless the 1 is r1c8's own.
+    const board = new Board(undefined, [
+      new Cage([[0, 0], [0, 1], [0, 2]], 13),
+      new Cage([[0, 3], [0, 4], [0, 5]], 14),
+    ]);
+    const cg = cgOf(board);
+    const trio: Coord[] = [[0, 6], [0, 7], [0, 8]];
+    cg.get(idx(0, 7))!.delete(8);
+    cg.get(idx(0, 7))!.delete(9);
+    for (const cell of trio) {
+      assert.equal(T.squeezedOut(cell, trio, cg, 18), null, "a bound would do");
+    }
+
+    const hint = T.fortyFiveSets(board, cg);
+    assert.ok(hint, "the bound is exhausted; enumeration must pick it up");
+    assert.equal(hint.technique, "45-rule (innie set)");
+    assert.equal(hint.action, "eliminate");
+    assert.deepEqual(hint.cells, [[0, 6]]);
+    assert.deepEqual(hint.digits, [1]);
+    assert.match(hint.explanation, /not one of them puts 1 in r1c7/);
+  });
+
+  it("counts only the leftovers still empty", () => {
+    // MAX_LEFTOVER is about unknowns, not about how the cages happen to fall. A
+    // five-cell leftover with three digits already written into it is a two-cell
+    // problem, and a sharp one — gating on the whole group hid column 6 of
+    // board4 completely, where five innies owe 25 and the two still empty owe 7.
+    const board = new Board(undefined, [new Cage([[0, 0], [0, 1], [0, 2], [0, 3]], 22)]);
+    for (const [c, d] of [[4, 1], [5, 2], [6, 3]] as const) board.setValue(0, c, d);
+
+    const [leftover] = [...T.unaccounted(board, new Set([0, 1, 2, 3, 4, 5, 6, 7, 8]), 45)];
+    assert.equal(leftover.cells.size, 5);
+    assert.ok(leftover.cells.size > T.MAX_LEFTOVER, "the whole group is over the cap");
+
+    // r1c8 and r1c9 owe 45 - 22 - 6 = 17, so both are 8 or 9.
+    const hint = T.fortyFiveSets(board, cgOf(board));
+    assert.ok(hint, "a five-cell leftover with three filled must still be read");
+    assert.deepEqual(hint.cells, [[0, 7]]);
+    assert.deepEqual(hint.digits, [4, 5, 6, 7]);
+    assert.match(hint.explanation, /17 once the filled ones are taken off/);
   });
 
   it("needs the leftovers to share a unit", () => {
@@ -826,5 +959,72 @@ describe("45-rule over several cells", () => {
     assert.equal(names[names.length - 1], "fortyFiveSets");
     assert.ok(names.indexOf("fortyFiveRule") < names.indexOf("fortyFiveSets"));
     assert.ok(names.indexOf("nakedPair") < names.indexOf("fortyFiveSets"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A whole board, by technique alone
+// ---------------------------------------------------------------------------
+
+describe("a board the catalogue has to earn", () => {
+  // board4 is a real Killer read mid-solve: four digits placed and the player's
+  // own pencil marks everywhere, each one narrower than what the values alone
+  // derive. It is uniquely solvable, but the catalogue used to return null on it
+  // from the very first hint — a stall that looks exactly like a broken puzzle
+  // from the player's chair, which is the failure this file exists to prevent.
+  //
+  // Nothing here asserts *which* technique fires. The board's own arithmetic
+  // decides that, and pinning it would break on every reordering; what has to
+  // hold is that the catalogue gets all the way to the end on its own.
+  it("solves board4 without the backtracker", () => {
+    const board = fixture("puzzle_page_killer_board4");
+    assert.equal(board.toWire().cells.filter((c) => c.value !== null).length, 4);
+
+    const run = solveWithTechniques(board, workingCandidates(board));
+    assert.ok(run.solved, `stalled with ${run.steps.length} steps taken`);
+    assert.ok(run.board.isValid());
+  });
+
+  it("agrees with the one solution the board has", () => {
+    // Soundness on the board that motivated every change above: technique
+    // propagation must land on the answer the search finds, not merely on *an*
+    // answer. `solve` cross-checks it against the backtracker.
+    const board = fixture("puzzle_page_killer_board4");
+    const searched = solve(board);
+    assert.ok(searched);
+
+    const run = solveWithTechniques(board, workingCandidates(board));
+    // Values only: the two disagree about leftover Pencil marks by design, since
+    // the technique run rubs out what it eliminates and the search never does.
+    const digits = (b: Board) => b.toWire().cells.map((c) => c.value);
+    assert.deepEqual(digits(run.board), digits(searched));
+  });
+
+  it("still leans on the Killer techniques to get there", () => {
+    // The classic half alone cannot finish this board — if it could, the cage
+    // and 45-rule work above would be untested by it and this file would be
+    // asserting nothing about Killer.
+    const board = fixture("puzzle_page_killer_board4");
+    const classic = T.TECHNIQUES.filter(
+      (t) => !["cageSum", "fortyFiveRule", "fortyFiveSets"].includes(t.name),
+    );
+    const cg = workingCandidates(board);
+    const work = Board.fromWire(board.toWire());
+    for (let i = 0; i < 500; i++) {
+      const hint = classic.reduce<T.Hint | null>((found, t) => found ?? t(work, cg), null);
+      if (hint === null) break;
+      if (hint.action === "place") {
+        const [r, c] = hint.cells[0];
+        work.setValue(r, c, hint.digits[0]);
+      } else {
+        // As solveWithTechniques does: mirror the elimination onto the marks too,
+        // or the same hint comes back forever.
+        for (const [r, c] of hint.cells) {
+          for (const d of hint.digits) work.cell(r, c).pencilMarks.delete(d);
+        }
+      }
+      applyToCandidates(work, cg, hint);
+    }
+    assert.ok(!work.isSolved(), "the classic techniques alone should not finish this");
   });
 });
