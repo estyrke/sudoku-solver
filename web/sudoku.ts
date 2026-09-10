@@ -51,6 +51,7 @@ let applyBtn!: HTMLButtonElement;
 let dropStatus!: HTMLElement;
 let panelEl!: HTMLElement;
 let resultEl!: HTMLElement;
+let numButtons!: HTMLElement[];
 
 // --- state ----------------------------------------------------------------
 // 81 cells, row-major. pencil_marks is a Set for editing convenience.
@@ -113,6 +114,20 @@ function render(): void {
     if (cell.low_confidence) el.classList.add("low");
   }
   applyHighlights();
+  syncNumpad();
+}
+
+// The numpad does double duty (write a value in Pen, toggle a mark in
+// Pencil), so it answers "what's already in this cell?" before the next tap:
+// a pencilled digit's button gets a ring, the cell's actual value's button
+// gets filled solid.
+function syncNumpad(): void {
+  const cell = cells[selected];
+  for (const btn of numButtons) {
+    const d = Number(btn.dataset.digit);
+    btn.classList.toggle("marked", cell.pencil_marks.has(d));
+    btn.classList.toggle("current", cell.value === d);
+  }
 }
 
 function applyHighlights(): void {
@@ -425,7 +440,8 @@ function mount(containerEl: HTMLElement): void {
   panelEl.querySelectorAll<HTMLElement>(".mode").forEach((b) =>
     b.addEventListener("click", () => setMode(b.dataset.mode as "pen" | "pencil"))
   );
-  panelEl.querySelectorAll<HTMLElement>(".num[data-digit]").forEach((b) =>
+  numButtons = [...panelEl.querySelectorAll<HTMLElement>(".num[data-digit]")];
+  numButtons.forEach((b) =>
     b.addEventListener("click", () => inputDigit(Number(b.dataset.digit)))
   );
   panelEl.querySelector("#numClear")!.addEventListener("click", clearCell);

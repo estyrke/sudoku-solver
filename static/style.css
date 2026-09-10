@@ -109,9 +109,10 @@ h1 { margin: 0 0 2px; font-size: 24px; }
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
   font-size: 11px;
+  line-height: 1;
   color: #6b7280;
 }
-.marks span { display: flex; align-items: center; justify-content: center; }
+.marks span { display: flex; align-items: center; justify-content: center; line-height: 1; }
 .marks span.hot { color: #c62828; font-weight: 700; }
 
 .modes, .actions { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
@@ -139,7 +140,13 @@ button:disabled { opacity: .5; cursor: default; }
 .mode.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 .primary:hover { background: #0f50a0; }
-.num { font-size: 18px; padding: 10px 0; }
+.num { font-size: 18px; padding: 10px 0; position: relative; }
+
+/* The numpad mirrors the selected cell's state: a pencilled digit gets a
+   ring, and the cell's actual value gets a solid fill — so the pad answers
+   "what's already here?" before a tap adds to it. */
+.num.marked { border-color: var(--accent); color: var(--accent); font-weight: 700; box-shadow: inset 0 0 0 2px var(--accent); }
+.num.current { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 @media (max-width: 640px) {
   .mode, .num { min-height: 44px; }
@@ -244,9 +251,10 @@ button:disabled { opacity: .5; cursor: default; }
 .kcell .cage-edge.x-r { right: 0; }
 
 .kcell .cage-sum {
-  position: absolute; top: 5px; left: 7px;
-  font-size: 10px; font-weight: 700; line-height: 1;
+  position: absolute; top: 1px; left: 2px;
+  font-size: 8px; font-weight: 700; line-height: 1;
   color: var(--accent);
+  z-index: 1;
 }
 
 .kcell.uncaged { background: repeating-linear-gradient(
@@ -255,7 +263,12 @@ button:disabled { opacity: .5; cursor: default; }
 .kcell.cage-selected { background: var(--target); }
 
 .kcell .val { font-size: 24px; }
-.kcell .marks { top: 14px; bottom: 6px; left: 6px; right: 6px; font-size: 9px; }
+/* Top-heavy inset, just tall enough to clear the cage-sum chip (10px) —
+   any less and the "1" mark renders right under it; any more and, on a
+   phone-sized cell, the bottom row of digits has no room left and clips
+   against the cell edge (see git history). Symmetric on the other three
+   sides, same as the plain board's marks. */
+.kcell .marks { inset: 10px 3px 3px 3px; font-size: 9px; }
 
 /* Full reveal points at the cell the hint is about, and reddens the marks it
    rules out. Outlined rather than filled: a cage-selected cell already uses the

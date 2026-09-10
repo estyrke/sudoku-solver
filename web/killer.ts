@@ -154,6 +154,7 @@ let deleteBtn!: HTMLButtonElement;
 let totalsEl!: HTMLElement;
 let hintEl!: HTMLElement;
 let revealEl!: HTMLElement;
+let numButtons!: HTMLElement[];
 
 function render(): void {
   boardEl.innerHTML = "";
@@ -165,6 +166,21 @@ function render(): void {
   markHintTargets();
   renderCageEditor();
   renderTotals();
+  syncNumpad();
+}
+
+// The numpad does double duty (write a value in Pen, toggle a mark in
+// Pencil), so it answers "what's already in this cell?" before the next tap:
+// a pencilled digit's button gets a ring, the cell's actual value's button
+// gets filled solid. Cleared once nothing is selected, same as any other
+// per-cell display.
+function syncNumpad(): void {
+  const cell = mode === "digits" && selected ? cells[idx(selected.r, selected.c)] : null;
+  for (const btn of numButtons) {
+    const d = Number(btn.dataset.digit);
+    btn.classList.toggle("marked", !!cell && cell.marks.includes(d));
+    btn.classList.toggle("current", !!cell && cell.value === d);
+  }
 }
 
 // Every unit holds 1-9 exactly once, so a board fully covered by cages has
@@ -652,6 +668,7 @@ function mount(panel: HTMLElement): void {
   totalsEl = panel.querySelector("#kTotals")!;
   hintEl = panel.querySelector("#kHint")!;
   revealEl = panel.querySelector("#kReveal")!;
+  numButtons = [...panel.querySelectorAll<HTMLElement>("#kNumpad [data-digit]")];
 
   reset();
 
