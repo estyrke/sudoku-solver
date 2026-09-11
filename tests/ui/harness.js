@@ -9,12 +9,12 @@
 // modules ourselves instead, which keeps the network out of it and lets a test
 // swap in its own `fetch` before any module code runs.
 //
-// What we import is the real shipped artifact — static/dist/*.js, as built from
-// web/*.ts by Vite — so a module that fails to compile or bundle fails here
-// too. The modules reach the page through the globals a browser gives them, so
-// `window` and `document` are pointed at this boot's jsdom before the import
-// runs; a cache-busting query gives every boot its own module instances, and so
-// its own module-level board state.
+// What we import is the real shipped artifact — static/dist/app.js, as built
+// from web/app.tsx by Vite — so a module that fails to compile or bundle fails
+// here too. The module reaches the page through the globals a browser gives it,
+// so `window` and `document` are pointed at this boot's jsdom before the import
+// runs; a cache-busting query gives every boot its own module instance, and so
+// its own board state.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -24,11 +24,11 @@ const { JSDOM } = require("jsdom");
 const ROOT = path.resolve(__dirname, "..", "..");
 const DIST = path.join(ROOT, "static", "dist");
 
-// shell first: killer registers itself into the shell's registry as it loads,
-// and the shell must exist by then. sudoku and queens are left out on purpose —
-// the killer tab is what these tests are about, and loading the others would
-// couple them to unrelated modules.
-const MODULES = ["shell.js", "killer.js"];
+// The whole app is one bundle now (see vite.config.ts), so every tab is always
+// present. Which one is in front is chosen per boot with `activate` instead —
+// most of these suites are about the Killer tab, so that is the default.
+const MODULES = ["app.js"];
+const DEFAULT_TAB = "killer";
 
 let bootCount = 0;
 
@@ -77,14 +77,17 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
  * @param {object[]} [opts.tabs]   extra puzzle types to register before mount,
  *                                 for exercising tab switching without pulling
  *                                 in a real second puzzle module
- * @param {string[]} [opts.scripts] which modules to load, in order — the order
- *                                 decides which tab opens first
+ * @param {string}   [opts.activate] which tab to bring to the front after
+ *                                 mounting; null to leave the first one up
  * @param {string}   [opts.url]    the page's address, for query-string paths
  * @param {Function} [opts.setUp]  runs against the window after the modules are
  *                                 imported but before anything mounts, for
  *                                 planting browser APIs jsdom does not have
+ * @param {Function} [opts.afterMount] runs against the window once the tabs
+ *                                 have rendered, for anything that has to
+ *                                 address an element the page just created
  */
-async function boot({ fetch, tabs = [], scripts = MODULES, url, setUp } = {}) {
+async function boot({ fetch, tabs = [], activate = DEFAULT_TAB, url, setUp, afterMount } = {}) {
   const dom = new JSDOM(fs.readFileSync(path.join(ROOT, "static/index.html"), "utf8"),
                         { runScripts: "outside-only", pretendToBeVisual: true, url });
   const { window } = dom;
@@ -103,7 +106,7 @@ async function boot({ fetch, tabs = [], scripts = MODULES, url, setUp } = {}) {
   globalThis.document = document;
 
   const stamp = ++bootCount;
-  for (const file of scripts) {
+  for (const file of MODULES) {
     const moduleUrl = pathToFileURL(path.join(DIST, path.basename(file, ".js") + ".js"));
     moduleUrl.search = `?boot=${stamp}`; // a fresh instance, and fresh state
     await import(moduleUrl.href);
@@ -113,6 +116,8 @@ async function boot({ fetch, tabs = [], scripts = MODULES, url, setUp } = {}) {
 
   // Everything is loaded and listening: mount the tabs, exactly once.
   mountTabs();
+  if (activate) window.PuzzleShell.activate(activate);
+  if (afterMount) afterMount(window);
 
   const panel = document.querySelector('[data-tab-panel="killer"]');
   const board = document.getElementById("kBoard");

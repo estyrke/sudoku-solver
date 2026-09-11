@@ -6,6 +6,10 @@
 // view nothing unusual happened: it gets the same payload it would have got
 // from a dropped file.
 //
+// Both entry points below are called by app.tsx once the tabs are mounted,
+// rather than run on import: a share that arrives before the tab it belongs to
+// exists has nowhere to land.
+//
 // sw.js itself stays plain JavaScript: it is served from the site root so its
 // scope covers /share, and it is loaded by the browser as a worker rather than
 // by this bundle.
@@ -14,12 +18,13 @@
 // `window.prompt`, …) rather than as bare globals, so the jsdom page harness can
 // substitute them per boot — see tests/ui/harness.js.
 
-import type { SharedReading } from "./shell";
+import { setShareStatus, type SharedReading } from "./ui/shared-reading.ts";
 
 const SHARE_CACHE = "shared-image";
 const SHARE_KEY = "/shared-image";
 
-if ("serviceWorker" in window.navigator) {
+export function registerServiceWorker(): void {
+  if (!("serviceWorker" in window.navigator)) return;
   // After load, so registering never competes with rendering the board.
   window.addEventListener("load", () => {
     window.navigator.serviceWorker.register("/sw.js").catch(() => {
@@ -28,9 +33,7 @@ if ("serviceWorker" in window.navigator) {
   });
 }
 
-document.addEventListener("DOMContentLoaded", adoptSharedImage);
-
-async function adoptSharedImage(): Promise<void> {
+export async function adoptSharedImage(): Promise<void> {
   const state = new URLSearchParams(window.location.search).get("shared");
   if (!state) return;
 
@@ -38,13 +41,10 @@ async function adoptSharedImage(): Promise<void> {
   // adopt a screenshot that has already been consumed (or already failed).
   window.history.replaceState(null, "", window.location.pathname);
 
-  const say = (message: string, bad?: boolean) => {
-    const el = document.getElementById("kDropStatus") || document.getElementById("dropStatus");
-    if (el) {
-      el.textContent = message;
-      el.classList.toggle("error", !!bad);
-    }
-  };
+  // Progress and failures go to the tab that shows the share's status line —
+  // see web/ui/shared-reading.ts. Which tab that is was never this file's
+  // decision to make, and it cannot reach into a rendered panel anyway.
+  const say = (message: string, bad?: boolean) => setShareStatus(message, !!bad);
 
   if (state === "error") {
     say("That share didn't contain an image the app could read.", true);

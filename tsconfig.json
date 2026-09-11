@@ -17,7 +17,11 @@
     // web/sudoku/*.ts import each other with an explicit ".ts" extension so
     // Node's ESM loader can run them unbundled in tests/engine; tsc otherwise
     // rejects that extension in an import specifier.
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    // Preact's JSX, not React's: the components in web/ are Preact components
+    // written in React's dialect (see docs/adr/0004).
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact"
   },
   "include": ["web", "vite.config.ts", "tests/engine"]
 }

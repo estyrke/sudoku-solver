@@ -90,6 +90,9 @@ describe("killer audit markers", () => {
         window.FormData = class {
           append() {}
         };
+      },
+      // The file input only exists once the tab has rendered.
+      afterMount(window) {
         Object.defineProperty(window.document.getElementById("kFile"), "files", {
           value: [{ name: "board3.png" }],
         });

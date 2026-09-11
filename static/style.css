@@ -13,6 +13,15 @@
 
 * { box-sizing: border-box; }
 
+/* The `hidden` attribute is how the page hides things (panels of tabs that
+   aren't in front, the reveal ladder before there is a hint, the Killer sum
+   row until a cage is selected). The browser's own `[hidden] { display: none }`
+   comes from the UA stylesheet, which any class selector outranks — so a rule
+   as ordinary as `.reveal { display: flex }` silently un-hides them. Settle it
+   once, here, rather than pairing every `display:` rule with a `[hidden]`
+   twin and remembering to do it again next time. */
+[hidden] { display: none !important; }
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   margin: 0;

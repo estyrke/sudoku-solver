@@ -9,8 +9,12 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
     "@types/node": "^26.5.0",
     "typescript": "^5.9.2",
     "vite": "^7.1.5"
+  },
+  "dependencies": {
+    "preact": "^10.29.8"
   }
 }

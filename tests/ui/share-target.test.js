@@ -11,10 +11,6 @@ const assert = require("node:assert/strict");
 
 const { boot } = require("./harness");
 
-// All four modules, in page order. sudoku.js registers first and so owns the
-// opening tab, which is what makes "the share switched tabs" mean anything.
-const SCRIPTS = ["shell.js", "sudoku.js", "queens.js", "killer.js", "pwa.js"];
-
 const cells = () => Array.from({ length: 81 }, () => ({ value: null, pencil_marks: [] }));
 const cage = (sum, coords) => ({ sum, cells: coords.map(([r, c]) => ({ r, c })) });
 
@@ -32,6 +28,10 @@ const KILLER_REPLY = {
 /**
  * Boot the page as though a screenshot had just been shared into it.
  *
+ * Sudoku is first in the app's PUZZLES list and so owns the opening tab, which
+ * is what makes "the share switched tabs" mean anything — hence `activate:
+ * null`, leaving it up rather than jumping to the harness's Killer default.
+ *
  * @param {string} state  the ?shared= marker sw.js redirects with
  * @param {object} opts   stashed:false to mimic a cache that lost the file
  */
@@ -39,7 +39,7 @@ async function share(state, { reply = KILLER_REPLY, stashed = true } = {}) {
   const deleted = [];
   const posted = [];
   const ui = await boot({
-    scripts: SCRIPTS,
+    activate: null,
     url: `http://localhost/?shared=${state}`,
     fetch: async (url, options) => {
       posted.push({ url, body: options?.body });
@@ -73,7 +73,7 @@ describe("android share target", () => {
     });
 
     it("brings the tab the screenshot belongs to to the front", () => {
-      // sudoku.js registered first, so this is a switch, not a coincidence.
+      // Sudoku was the tab in front, so this is a switch, not a coincidence.
       assert.equal(ui.panel.hidden, false);
       assert.equal(ui.document.querySelector('[data-tab-panel="sudoku"]').hidden, true);
       assert.ok(ui.document.querySelector('.tab[data-tab-id="killer"]').classList.contains("active"));
@@ -128,7 +128,7 @@ describe("android share target", () => {
     });
 
     it("leaves an ordinary visit completely alone", async () => {
-      const ui = await boot({ scripts: SCRIPTS, url: "http://localhost/" });
+      const ui = await boot({ activate: null, url: "http://localhost/" });
       await ui.flush();
       assert.equal(ui.document.getElementById("kDropStatus").textContent, "");
       assert.equal(ui.document.querySelector('[data-tab-panel="sudoku"]').hidden, false);

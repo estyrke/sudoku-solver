@@ -31,7 +31,7 @@ describe("sudoku solve", () => {
   before(async () => {
     calls = [];
     ui = await boot({
-      scripts: ["shell.js", "sudoku.js"],
+      activate: "sudoku",
       fetch: async (...args) => {
         calls.push(args);
         throw new Error("Solve must not touch the network");

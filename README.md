@@ -52,6 +52,7 @@ still works; only sharing is missing. See
 | Board model | `sudoku/model.py` | grid, units/peers, cages, candidate derivation, validity — reader support only; the engine's own copy is `web/sudoku/model.ts` |
 | CV reader | `sudoku/reader/` | grid detection → cell parsing → template-matched digits |
 | Web app | `app.py`, `web/` | `/parse`, `/confirm` + the board UI |
+| Browser UI | `web/app.tsx`, `web/ui/`, `web/<puzzle>.tsx` | the tab shell, the widgets every tab shares, and one file per puzzle type — Preact components, see `docs/adr/0004-preact-for-the-ui-layer.md` |
 | Browser engine | `web/sudoku/` | board model with Cages, the escalating technique catalogue (classic and Killer alike), `findHint`, `solve` and the mistake audit, in TypeScript — the Sudoku and Killer tabs' **Get hint** and **Solve** run locally, no server round trip |
 | PWA shell | `static/manifest.webmanifest`, `static/sw.js`, `web/pwa.ts` | installability + the Android share target |
 
@@ -59,12 +60,13 @@ Icons are drawn by `python -m tools.make_icons`; the PNGs it writes are what shi
 
 ### The front end build
 
-The browser modules are TypeScript in `web/`, compiled and bundled by Vite into
-`static/dist/`, which is what `static/index.html` loads:
+The browser modules are TypeScript in `web/` — the UI as Preact components in
+`.tsx`, the engine as plain `.ts` — compiled and bundled by Vite into one
+`static/dist/app.js`, which is what `static/index.html` loads:
 
 ```bash
 npm ci
-npm run build       # web/*.ts -> static/dist/*.js
+npm run build       # web/app.tsx -> static/dist/app.js
 npm run typecheck   # tsc --noEmit
 ```
 
@@ -75,6 +77,21 @@ obfuscation or a security measure, since minified JavaScript is trivially readab
 
 `static/sw.js` stays hand-written JavaScript outside the bundle: it is served from
 the site root so its scope covers `/share`, and the browser loads it as a worker.
+
+### Adding a puzzle type
+
+Three steps, and no edits anywhere else:
+
+1. Write `web/<name>.tsx` exporting a `PuzzleType`, building its panel out of the
+   shared components in `web/ui/` — `Grid`, `Numpad`, `PencilMarks`, `HintPanel`,
+   `DropZone`, `ModeToggle`.
+2. Import it in `web/app.tsx`.
+3. Add it to that file's `PUZZLES` array.
+
+`static/index.html` holds no per-tab markup: a tab's markup lives with the code
+that drives it. Every panel stays mounted for the life of the page and a tab
+switch only flips `hidden`, so a board survives being switched away from — which
+is also why a tab checks whether it is in front before claiming a keystroke.
 
 ### Hint techniques (simplest → hardest)
 Naked single → hidden single → naked pair/triple → hidden pair → naked quad →
@@ -95,6 +112,7 @@ pytest                                  # board model + CV reader
 npm ci && npm run typecheck && npm run build             # the browser modules
 npm --prefix tests/engine test                           # the browser engine, straight off .ts
 npm --prefix tests/ui ci && npm --prefix tests/ui test   # the page, under jsdom
+npm --prefix tests/components ci && npm --prefix tests/components test   # the shared widgets
 ```
 
 The Python suite covers the board model the reader builds on and the CV pipeline
@@ -117,6 +135,11 @@ which is exactly how an unusable hint survived several rounds of fixes to the en
 behind it. Nothing here reaches the network: what the server still answers is stubbed,
 and on the tabs that hint and solve locally `fetch` is stubbed to throw, so a
 regression that quietly routes them back through the network fails loudly.
+
+`tests/components/` unit-tests the shared widgets in `web/ui/` on their own — what the
+numpad says about the selected cell, what each rung of the reveal ladder does and does
+not give away, where a pencil mark lands in its 3x3 square. Vitest rather than
+`node --test`, because these are `.tsx` and Node's type-stripping cannot compile JSX.
 
 All three run on every push and pull request — see `.github/workflows/ci.yml`.
 
