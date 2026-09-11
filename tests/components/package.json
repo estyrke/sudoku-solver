@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Unit tests for the shared UI components in web/ui/. Vitest rather than node --test, because these are .tsx: tests/engine's Node type-stripping cannot compile JSX, and Vite (already a dependency of the build) can. Kept apart from tests/ui, which drives whole pages through jsdom, and from tests/engine, which is pure logic.",
+  "description": "Unit tests for the shared UI components in web/ui/. Vitest rather than node --test, because these are .tsx: tests/engine's Node type-stripping cannot compile JSX, and Vite (already a dependency of the build) can. Kept apart from tests/ui, which drives whole pages through jsdom, and from tests/engine, which is pure logic. `vite` is listed here explicitly even though vitest brings its own: reached only as a peer, npm eagerly installs vite's optional peer `lightningcss` and writes its platform binaries into the lockfile as required, which makes `npm ci` fail with EBADPLATFORM on any machine but the one that wrote the lock.",
   "scripts": {
     "test": "vitest run"
   },
@@ -12,6 +12,7 @@
     "@testing-library/preact": "^3.2.4",
     "jsdom": "^30.0.1",
     "preact": "^10.28.3",
+    "vite": "^7.3.6",
     "vitest": "^3.2.4"
   }
 }
