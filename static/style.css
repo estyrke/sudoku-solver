@@ -263,7 +263,9 @@ button:disabled { opacity: .5; cursor: default; }
   position: absolute; top: 1px; left: 2px;
   font-size: 8px; font-weight: 700; line-height: 1;
   color: var(--accent);
-  z-index: 1;
+  background: inherit;
+  padding: 1px 2px;
+  z-index: 2;
 }
 
 .kcell.uncaged { background: repeating-linear-gradient(
