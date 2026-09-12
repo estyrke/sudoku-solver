@@ -88,8 +88,9 @@ FIXTURE = Path(__file__).parent / "fixtures" / "puzzle_page_killer_sample_board.
 FIXTURE2 = Path(__file__).parent / "fixtures" / "puzzle_page_killer_board2.png"
 FIXTURE3 = Path(__file__).parent / "fixtures" / "puzzle_page_killer_board3.png"
 FIXTURE4 = Path(__file__).parent / "fixtures" / "puzzle_page_killer_board4.png"
-# The same four boards, as the reader read them, for the TypeScript engine
-# tests to solve without needing OpenCV.
+FIXTURE5 = Path(__file__).parent / "fixtures" / "puzzle_page_killer_board5.png"
+# The same boards, as the reader read them, for the TypeScript engine tests to
+# solve without needing OpenCV.
 BOARDS = Path(__file__).parent / "fixtures" / "killer_boards"
 
 
@@ -185,7 +186,7 @@ def test_killer_reader_produces_a_usable_board():
 def test_killer_reader_checksum_is_clean_on_every_reference_board():
     """All four reference screenshots read exactly, so the 9x45 checksum passes
     and nothing is flagged for review."""
-    for path in (FIXTURE, FIXTURE2, FIXTURE3, FIXTURE4):
+    for path in (FIXTURE, FIXTURE2, FIXTURE3, FIXTURE4, FIXTURE5):
         read = read_killer_board(cv2.imread(str(path)))
         assert read.board.is_fully_caged(), path.name
         assert read.sum_total == 405, f"{path.name}: {read.sum_total}"
@@ -245,7 +246,7 @@ def test_every_reference_board_matches_its_committed_read():
     alters a digit or a cage sum fails here rather than silently leaving the
     engine's fixtures describing a board nobody reads any more.
     """
-    for path in (FIXTURE, FIXTURE2, FIXTURE3, FIXTURE4):
+    for path in (FIXTURE, FIXTURE2, FIXTURE3, FIXTURE4, FIXTURE5):
         board = read_killer_board(cv2.imread(str(path))).board
         committed = json.loads((BOARDS / f"{path.stem}.json").read_text())
         assert board.to_dict() == committed, (
@@ -290,6 +291,23 @@ def test_killer_reader_handles_a_fourth_board_layout():
         (2,0):12,(2,3):10,(2,5):15,(3,1):10,(3,4):12,(3,7):12,(4,0):22,(4,3):15,
         (4,4):11,(4,5):9,(4,8):12,(5,1):15,(5,5):20,(5,6):4,(5,7):9,(6,0):17,
         (6,3):17,(7,1):15,(7,6):16,(8,1):20,(8,6):20,
+    }
+
+
+def test_killer_reader_handles_a_fifth_board_layout():
+    """Board #5284, 27 cages, every sum exact. This is the board that motivated
+    `cagePointing` in the TypeScript catalogue (tests/engine/techniques.test.ts):
+    the classic and prior Killer techniques alone stall on it from the first
+    hint, even though it has a unique solution."""
+    read = read_killer_board(cv2.imread(str(FIXTURE5)))
+    assert len(read.board.cages) == 27
+    assert sum(len(c.cells) for c in read.board.cages) == 81
+    got = {min(c.cells): c.sum for c in read.board.cages}
+    assert got == {
+        (0,0):22,(0,3):30,(0,7):4,(1,0):17,(1,2):23,(1,4):24,(1,7):16,(2,6):14,
+        (2,7):12,(3,0):22,(3,4):11,(4,2):15,(4,5):6,(4,6):12,(4,8):24,(5,0):15,
+        (5,2):16,(5,4):10,(5,7):10,(6,1):6,(6,5):13,(7,1):14,(7,2):12,(7,3):14,
+        (7,4):11,(7,5):21,(7,7):11,
     }
 
 

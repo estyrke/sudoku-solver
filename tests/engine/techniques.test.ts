@@ -130,6 +130,28 @@ describe("techniques", () => {
     assert.ok(has(hint.cells, [2, 0]));
   });
 
+  it("cage pointing, cage to line", () => {
+    // A 2-cell cage totalling 17 can only be {8, 9} — so unlike a plain box, a
+    // digit being confined to one line inside it only means something because
+    // every workable set uses it. Both cells sit in row 0; r0c5 also has an 8.
+    const board = new Board(undefined, [new Cage([[0, 0], [0, 1]], 17)]);
+    const hint = T.cagePointing(board, cgOf(board));
+    assert.ok(hint);
+    assert.equal(hint.action, "eliminate");
+    assert.deepEqual(hint.digits, [8]);
+    assert.ok(has(hint.cells, [0, 5]));
+  });
+
+  it("cage pointing stays quiet when the digit could be left out of the cage", () => {
+    // A 4-cell cage totalling 22 has {2,3,8,9} among its workable sets, but also
+    // {4,5,6,7} — no 2 in that one — so a 2 confined to one line inside the cage
+    // still proves nothing about the rest of that line.
+    const board = new Board(undefined, [
+      new Cage([[0, 0], [0, 1], [0, 2], [1, 1]], 22),
+    ]);
+    assert.equal(T.cagePointing(board, cgOf(board)), null);
+  });
+
   it("x-wing across rows", () => {
     // Digit 4 in rows 0 and 4 appears in exactly columns 2 and 6 -> eliminate 4
     // from those columns elsewhere (r9c3).
@@ -263,6 +285,7 @@ describe("escalation order", () => {
         "hiddenTriple",
         "pointing",
         "claiming",
+        "cagePointing",
         "xWing",
         "fortyFiveSets",
       ],
@@ -1026,5 +1049,44 @@ describe("a board the catalogue has to earn", () => {
       applyToCandidates(work, cg, hint);
     }
     assert.ok(!work.isSolved(), "the classic techniques alone should not finish this");
+  });
+});
+
+describe("a board that needs cage pointing", () => {
+  // board5 is a real Killer read with a single digit placed and the player's own
+  // pencil marks everywhere else. Every technique that predates `cagePointing`
+  // stalls on it from the very first hint, even though it has a unique solution
+  // — the failure this file exists to prevent, same as board4 above, but this
+  // time the missing piece was a whole technique rather than an edge case in an
+  // existing one.
+  it("solves board5 without the backtracker", () => {
+    const board = fixture("puzzle_page_killer_board5");
+    assert.equal(board.toWire().cells.filter((c) => c.value !== null).length, 1);
+
+    const run = solveWithTechniques(board, workingCandidates(board));
+    assert.ok(run.solved, `stalled with ${run.steps.length} steps taken`);
+    assert.ok(run.board.isValid());
+  });
+
+  it("agrees with the one solution the board has", () => {
+    const board = fixture("puzzle_page_killer_board5");
+    const searched = solve(board);
+    assert.ok(searched);
+
+    const run = solveWithTechniques(board, workingCandidates(board));
+    const digits = (b: Board) => b.toWire().cells.map((c) => c.value);
+    assert.deepEqual(digits(run.board), digits(searched));
+  });
+
+  it("needs cagePointing itself to get past the first hint", () => {
+    const board = fixture("puzzle_page_killer_board5");
+    const withoutCagePointing = T.TECHNIQUES.filter((t) => t.name !== "cagePointing");
+    const stalled = workingCandidates(board);
+    const hint = withoutCagePointing.reduce<T.Hint | null>(
+      (found, t) => found ?? t(board, stalled),
+      null,
+    );
+    assert.equal(hint, null, "expected every other technique to stall on the first hint");
+    assert.equal(findHint(board, workingCandidates(board))?.technique, "Cage pointing");
   });
 });

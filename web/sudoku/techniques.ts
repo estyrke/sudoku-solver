@@ -719,6 +719,62 @@ export function cageSum(board: Board, cg: CandGrid): Hint | null {
   return null;
 }
 
+/**
+ * Cage -> line: a digit every workable set puts somewhere in a cage, confined
+ * within it to one row or column, clears the rest of that line.
+ *
+ * The Killer counterpart of `pointing` — a cage never has to hold every digit
+ * 1-9 the way a box does, so confinement alone proves nothing about it; it
+ * takes `cageOptions` showing the digit survives in *every* combination to
+ * know it really does belong somewhere in the cage before that confinement
+ * means anything outside it.
+ */
+export function cagePointing(board: Board, cg: CandGrid): Hint | null {
+  for (const cage of board.cages) {
+    const options = cageOptions(board, cg, cage);
+    if (options === null) continue;
+    const { empties: open, allowed, combos } = options;
+    for (let d = 1; d <= 9; d++) {
+      if (!combos.every((combo) => combo.includes(d))) continue;
+      const holders = open.filter((cell) => allowed.get(idx(cell[0], cell[1]))!.has(d));
+      if (holders.length < 2) continue;
+      const rows = new Set(holders.map(([r]) => r));
+      const cols = new Set(holders.map(([, c]) => c));
+      let line: Coord[];
+      let lineLabel: string;
+      if (rows.size === 1) {
+        const r = [...rows][0];
+        line = empties(Board.rowCells(r), cg);
+        lineLabel = `row ${r + 1}`;
+      } else if (cols.size === 1) {
+        const c = [...cols][0];
+        line = empties(Board.colCells(c), cg);
+        lineLabel = `column ${c + 1}`;
+      } else {
+        continue;
+      }
+      const inCage = cage.indices;
+      const elim = line.filter(
+        (cell) => !inCage.has(idx(cell[0], cell[1])) && cand(cg, cell).has(d),
+      );
+      if (elim.length === 0) continue;
+      return {
+        technique: "Cage pointing",
+        level: 6,
+        action: "eliminate",
+        cells: elim,
+        digits: [d],
+        units: [cageLabel(cage), lineLabel],
+        explanation:
+          `Every workable set for ${cageLabel(cage)} includes a ${d}, and within the cage ` +
+          `it can only sit in ${lineLabel} (${names(holders)}), so ${d} is removed from the ` +
+          `rest of ${lineLabel}: ${names(elim)}.`,
+      };
+    }
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Killer Sudoku: the 45-rule (innies and outies)
 // ---------------------------------------------------------------------------
@@ -1103,7 +1159,8 @@ export type Technique = (board: Board, cg: CandGrid) => Hint | null;
  * follows from it, and the tests pin it.
  *
  * Killer's `cageSum` sits between the singles and the subsets, `fortyFiveRule`
- * directly after it, and `fortyFiveSets` last of all.
+ * directly after it, `cagePointing` alongside `pointing`/`claiming` as the
+ * cage-scoped member of that family, and `fortyFiveSets` last of all.
  */
 export const TECHNIQUES: Technique[] = [
   // First: the player's own notes must be right before anything derived from
@@ -1120,6 +1177,7 @@ export const TECHNIQUES: Technique[] = [
   hiddenTriple,
   pointing,
   claiming,
+  cagePointing,
   xWing,
   // Last: the hardest of these to see by hand, and it only ever fires when
   // everything simpler has already been exhausted.
