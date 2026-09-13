@@ -1,16 +1,21 @@
-// Queens tab: manual entry (region painting, mark/queen gestures) and
+// Queens tab: manual entry (region painting, mark/queen gestures), hinting and
 // backtracking solve.
 //
-// Unlike the two Sudoku tabs, this one still asks the server to solve and to
-// hint — the Queens engine has not been ported to the browser.
+// Hinting and solving run entirely in the browser against web/queens/ — no
+// request — the same way the two Sudoku tabs run web/sudoku/. The two engines
+// share no model, Hint type or reveal code (see
+// docs/adr/0001-sudoku-and-queens-as-separate-contexts.md).
 //
-// Browser APIs are reached through `window` (`window.fetch`, …) rather than as
-// bare globals, so the jsdom page harness can substitute them per boot.
+// Browser APIs are reached through `window` (`window.setTimeout`, …) rather
+// than as bare globals, so the jsdom page harness can substitute them per boot.
 
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { PuzzleType } from "./app.tsx";
 import { Grid } from "./ui/Grid.tsx";
 import { HintPanel, NO_HINT, type HintView } from "./ui/HintPanel.tsx";
+import { Board, type Cell as QueensCell } from "./queens/model.ts";
+import { findHint, hintToWire, nudge, type WireHint } from "./queens/hint.ts";
+import { solve } from "./queens/solver.ts";
 
 const DEFAULT_N = 8;
 const CLICK_DEBOUNCE_MS = 200; // let a dblclick cancel the leading click first
@@ -19,29 +24,17 @@ const PALETTE_POOL = [
   "#5eead4", "#93c5fd", "#c4b5fd", "#f0abfc",
 ];
 
-type CellState = "empty" | "marked" | "queen";
+type CellState = QueensCell["state"];
 
-interface QueensCell {
-  state: CellState;
-  region: number | null;
-}
-
-interface Hint {
-  action: "place" | "eliminate";
-  cells: { r: number; c: number }[];
-  explanation: string;
-}
-
-/** The /queens/hint reply, once it is known to be a hint rather than a refusal. */
-interface HintReply {
-  ok: true;
+/** A found hint plus how much of it is on show. */
+interface Reveal {
   nudge: string;
-  technique: string;
-  hint: Hint;
+  hint: WireHint;
+  level: number;
 }
 
 // Unpainted cells default to region: null (never inferred, never region 0 —
-// see queens/model.py's Cell docstring for why null is the sentinel).
+// see web/queens/model.ts's Cell docstring for why null is the sentinel).
 const emptyBoard = (size: number): QueensCell[] =>
   Array.from({ length: size * size }, () => ({ state: "empty" as CellState, region: null }));
 
@@ -66,7 +59,7 @@ function QueensPanel(_: { active: boolean }) {
   const [regionCount, setRegionCount] = useState(1);
   const [tool, setTool] = useState<"cursor" | "paint">("cursor");
   const [activeRegion, setActiveRegion] = useState(0);
-  const [reveal, setReveal] = useState<(HintReply & { level: number }) | null>(null);
+  const [reveal, setReveal] = useState<Reveal | null>(null);
   const [hint, setHint] = useState<HintView>(NO_HINT);
   const [result, setResult] = useState<{ text: string; warn?: boolean } | null>(null);
 
@@ -148,8 +141,8 @@ function QueensPanel(_: { active: boolean }) {
     resetTo(Math.max(1, Math.min(16, Math.round(requested))));
   };
 
-  const loadSolvedBoard = (data: { cells: QueensCell[] }) => {
-    const loaded = data.cells.map((c) => ({ state: c.state, region: c.region }));
+  const loadSolvedBoard = (solved: Board) => {
+    const loaded = solved.toWire().cells;
     setCells(() => loaded);
     // The solved board can't introduce new region ids, but keep the palette at
     // least as wide as whatever regions are actually present.
@@ -159,62 +152,65 @@ function QueensPanel(_: { active: boolean }) {
   };
 
   // --- solve --------------------------------------------------------------
-  const payload = () => ({ n, cells: cells.map((c) => ({ state: c.state, region: c.region })) });
+  // Runs entirely in the browser: no /queens/solve request.
+  const engineBoard = () => Board.fromWire({ n, cells });
 
-  const solveBoard = async () => {
-    setResult({ text: "Solving…" });
-    try {
-      const res = await window.fetch("/queens/solve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload()),
-      });
-      const data = await res.json();
-      if (!data.ok) {
-        setResult({ text: data.reason, warn: true });
-        return;
-      }
-      loadSolvedBoard(data.board);
-      setResult({ text: "Solved!" });
-    } catch (err) {
-      setResult({ text: "Solve failed: " + (err as Error).message, warn: true });
+  const solveBoard = () => {
+    const solved = solve(engineBoard());
+    if (solved === null) {
+      setResult({ text: "No solution exists for this board.", warn: true });
+      return;
     }
+    loadSolvedBoard(solved);
+    setResult({ text: "Solved!" });
   };
 
   // --- hints --------------------------------------------------------------
-  const showReveal = (next: HintReply & { level: number }) => {
+  const showReveal = (next: Reveal) => {
     setReveal(next);
     setHint({
       kind: "reveal",
       level: next.level,
       nudge: next.nudge,
-      technique: next.technique,
+      technique: next.hint.technique,
       explanation: next.hint.explanation,
     });
   };
 
-  const getHint = async () => {
+  /**
+   * Find and show a hint. Runs the ported engine in the page — no request.
+   *
+   * The refusals are worded exactly as the deleted `/queens/hint` endpoint
+   * worded them, and are checked in the same order: an invalid board first,
+   * then a solved one, then a board no implemented technique can speak to.
+   */
+  const getHint = () => {
+    const current = engineBoard();
     const refuse = (reason: string) => {
       setReveal(null);
       setHint({ kind: "message", text: reason, warn: true });
     };
-    let data;
-    try {
-      const res = await window.fetch("/queens/hint", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload()),
-      });
-      data = await res.json();
-    } catch (err) {
-      refuse("Hint request failed: " + (err as Error).message);
+
+    if (!current.isValid()) {
+      refuse(
+        "The board is invalid — two queens share a row, column, " +
+          "or region, or sit adjacent to each other.",
+      );
       return;
     }
-    if (!data.ok) {
-      refuse(data.reason);
+    if (current.isSolved()) {
+      refuse("This board is already solved. 🎉");
       return;
     }
-    showReveal({ ...(data as HintReply), level: 1 });
+    const found = findHint(current);
+    if (found === null) {
+      refuse(
+        "No technique in the current set applies. The board may need a " +
+          "more advanced strategy than is implemented yet.",
+      );
+      return;
+    }
+    showReveal({ nudge: nudge(found), hint: hintToWire(found), level: 1 });
   };
 
   const applyStep = () => {

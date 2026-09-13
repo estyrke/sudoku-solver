@@ -54,6 +54,7 @@ still works; only sharing is missing. See
 | Web app | `app.py`, `web/` | `/parse`, `/confirm` + the board UI |
 | Browser UI | `web/app.tsx`, `web/ui/`, `web/<puzzle>.tsx` | the tab shell, the widgets every tab shares, and one file per puzzle type — Preact components, see `docs/adr/0004-preact-for-the-ui-layer.md` |
 | Browser engine | `web/sudoku/` | board model with Cages, the escalating technique catalogue (classic and Killer alike), `findHint`, `solve` and the mistake audit, in TypeScript — the Sudoku and Killer tabs' **Get hint** and **Solve** run locally, no server round trip |
+| Browser engine | `web/queens/` | the Queens board model (variable N, irregular Regions), its technique catalogue, `findHint` and the backtracking `solve` — a separate engine sharing no code with `web/sudoku/`, see `docs/adr/0001-sudoku-and-queens-as-separate-contexts.md` |
 | PWA shell | `static/manifest.webmanifest`, `static/sw.js`, `web/pwa.ts` | installability + the Android share target |
 
 Icons are drawn by `python -m tools.make_icons`; the PNGs it writes are what ship.
@@ -121,10 +122,10 @@ against real screenshots — including a check that each reference Killer screen
 still reads as the board committed under `tests/fixtures/killer_boards/`, which is
 what the TypeScript solver tests solve.
 
-`tests/engine/` unit-tests the TypeScript engine (`web/sudoku/`) directly — the board
-model and its Cages, the technique catalogue and its escalation order, `findHint`,
-`solve` and the mistake audit — with no jsdom and no build step, since Node runs `.ts`
-source straight, stripping types as it goes. It's where the Python tests were ported
+`tests/engine/` unit-tests the TypeScript engines (`web/sudoku/`, `web/queens/`)
+directly — the board models, Sudoku's Cages, each technique catalogue and its
+escalation order, `findHint`, `solve` and the mistake audit — with no jsdom and no
+build step, since Node runs `.ts` source straight, stripping types as it goes. It's where the Python tests were ported
 assertion-for-assertion as the engine moved into the browser.
 
 The UI suite (`tests/ui/`) loads `static/index.html` under jsdom, imports the built
@@ -134,8 +135,9 @@ first. It is deliberately separate:
 a correct engine and a correct API response are not enough if the page discards them,
 which is exactly how an unusable hint survived several rounds of fixes to the engine
 behind it. Nothing here reaches the network: what the server still answers is stubbed,
-and on the tabs that hint and solve locally `fetch` is stubbed to throw, so a
-regression that quietly routes them back through the network fails loudly.
+and where a tab hints and solves locally — all three of them now — `fetch` is stubbed
+to throw, so a regression that quietly routes them back through the network fails
+loudly.
 
 `tests/components/` unit-tests the shared widgets in `web/ui/` on their own — what the
 numpad says about the selected cell, what each rung of the reveal ladder does and does

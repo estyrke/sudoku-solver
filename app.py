@@ -1,13 +1,13 @@
-"""FastAPI app: serves the board UI, the screenshot readers, and Queens' hints.
+"""FastAPI app: serves the board UI and the screenshot readers.
 
 Run with::
 
     uvicorn app:app --reload
 
-Sudoku and Killer reason entirely in the browser — board model, techniques, hints,
-solving and the mistake audit all live in ``web/sudoku/`` — so nothing here answers
-for them. What is left is screenshot reading (``/parse``, ``/killer/parse``,
-``/share/parse``, ``/confirm``) plus the Queens endpoints, which are still to move.
+Every puzzle reasons entirely in the browser — board models, techniques, hints,
+solving and the mistake audit live in ``web/sudoku/`` and ``web/queens/`` — so
+nothing here answers for them. What is left is screenshot reading (``/parse``,
+``/killer/parse``, ``/share/parse``, ``/confirm``).
 
 The CV reader is imported lazily so the logic + UI work even before OpenCV (and the
 reader module) are available.
@@ -25,10 +25,6 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from sudoku.model import Board
-
-from queens.model import Board as QueensBoard
-from queens.solver.hint import find_hint as queens_find_hint
-from queens.solver.hint import solve as queens_solve
 
 STATIC = Path(__file__).parent / "static"
 
@@ -50,34 +46,6 @@ def _board_from_model(data: BoardModel) -> Board:
     if len(data.cells) != 81:
         raise HTTPException(400, "board must have 81 cells")
     return Board.from_dict({"cells": [c.model_dump() for c in data.cells]})
-
-
-class QueensCellModel(BaseModel):
-    state: str = "empty"
-    region: int | None = None
-
-
-class QueensBoardModel(BaseModel):
-    n: int
-    cells: list[QueensCellModel]
-
-
-def _queens_board_from_model(data: QueensBoardModel) -> QueensBoard:
-    if len(data.cells) != data.n * data.n:
-        raise HTTPException(400, f"board of size {data.n} must have {data.n * data.n} cells")
-    return QueensBoard.from_dict({"n": data.n, "cells": [c.model_dump() for c in data.cells]})
-
-
-def _queens_nudge(hint) -> str:
-    """The gentlest hint: which row/column/region to look at, without saying
-    what to do. Kept separate from ``_nudge`` (rather than shared) so the
-    queens and sudoku web-layer code stay independent, per
-    ``docs/adr/0001-sudoku-and-queens-as-separate-contexts.md``."""
-    if hint.units:
-        return f"Look at {hint.units[0]}."
-    from queens.model import cell_name
-
-    return f"Look at {cell_name(*hint.cells[0])}."
 
 
 @app.get("/")
@@ -152,42 +120,6 @@ async def confirm_endpoint(
     store = TemplateStore().load()
     added = learn_from_board(store, img, confirmed)
     return {"ok": True, "learned": added}
-
-
-@app.post("/queens/solve")
-def queens_solve_endpoint(data: QueensBoardModel) -> dict:
-    board = _queens_board_from_model(data)
-    solved = queens_solve(board)
-    if solved is None:
-        return {"ok": False, "reason": "No solution exists for this board."}
-    return {"ok": True, "board": solved.to_dict()}
-
-
-@app.post("/queens/hint")
-def queens_hint_endpoint(data: QueensBoardModel) -> dict:
-    board = _queens_board_from_model(data)
-    if not board.is_valid():
-        return {
-            "ok": False,
-            "reason": "The board is invalid — two queens share a row, column, "
-            "or region, or sit adjacent to each other.",
-        }
-    if board.is_solved():
-        return {"ok": False, "reason": "This board is already solved. 🎉"}
-    hint = queens_find_hint(board)
-    if hint is None:
-        return {
-            "ok": False,
-            "reason": "No technique in the current set applies. The board may need a "
-            "more advanced strategy than is implemented yet.",
-        }
-    # Progressive reveal levels: nudge -> technique name -> full reasoning.
-    return {
-        "ok": True,
-        "nudge": _queens_nudge(hint),
-        "technique": hint.technique,
-        "hint": hint.to_dict(),
-    }
 
 
 # Static assets (css/js) served under /static.
