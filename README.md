@@ -43,7 +43,7 @@ outlines, sending it to *Killer* if it finds them and *Sudoku* if it doesn't.
 ### Offline
 
 Once installed, the app works with no network: the service worker precaches the
-page, the stylesheet and the engine bundle, so hinting, solving and the mistake
+page and everything it needs to run — stylesheet, manifest, engine bundle — so hinting, solving and the mistake
 audit — all of which run in the browser — are available straight away. Reading a
 *screenshot* still needs the network, because the CV reader runs on the server;
 offline the app says so rather than failing silently. A new deploy is picked up

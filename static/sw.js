@@ -16,7 +16,8 @@
 // audit all live inside static/dist/app.js. Nothing about answering a board
 // needs the server, so the only thing standing between the player and an
 // offline hint is loading the page. Precaching the shell on install removes it,
-// and from the first launch rather than only after a lucky online visit.
+// and from the first launch rather than only after a lucky online visit. What
+// "the shell" means is SHELL_ASSETS below, and nowhere else.
 //
 // Screenshot *reading* is still server-side (/parse, /killer/parse,
 // /share/parse), so it is deliberately left on the network: a cached answer
@@ -27,11 +28,15 @@
 const SHARE_CACHE = "shared-image";
 const SHARE_KEY = "/shared-image";
 
-// Bumping the version is what retires the previous deploy's assets: the new
-// worker precaches into a cache of its own and deletes every older one as it
-// activates. Between deploys the same names are revalidated in the background
-// on each use (see serveFromCache), so a redeploy that forgets this bump still
-// reaches the player on their second launch rather than never.
+// What actually refreshes a deployed asset is the background revalidation in
+// serveFromCache: the names here are fixed paths with no content hash, so every
+// launch re-fetches them and the next one gets the new build.
+//
+// The version in the cache name is the coarser lever, and nothing bumps it
+// automatically — bump it by hand when a release has to land at once rather
+// than one launch late, or when the precache list itself changes. A new worker
+// precaches into a cache of its own and deletes every older one as it
+// activates, so the previous deploy does not linger in the player's storage.
 const SHELL_CACHE = "app-shell-v1";
 
 // The app shell and the engine. `/` rather than `/static/index.html` because
@@ -63,7 +68,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   const key = shellKey(request, url);
-  if (key) event.respondWith(serveFromCache(request, key));
+  if (key) event.respondWith(serveFromCache(event, key));
   // Everything else — the reader endpoints above all — falls through to the
   // network untouched.
 });
@@ -106,17 +111,23 @@ function shellKey(request, url) {
  * build is picked up on the launch *after* the one that fetched it, which for
  * a puzzle helper is a fair trade for never showing a spinner over the board.
  */
-async function serveFromCache(request, key) {
+async function serveFromCache(event, key) {
   const cache = await caches.open(SHELL_CACHE);
   const cached = await cache.match(key);
 
-  const fresh = fetch(request)
+  const fresh = fetch(event.request)
     .then(async (response) => {
       // A 404 or a captive portal's login page must not replace a good copy.
       if (response && response.ok) await cache.put(key, response.clone());
       return response;
     })
     .catch(() => undefined);
+
+  // The refresh outlives the response it hides behind, so the browser has to be
+  // told to keep the worker alive for it. Without this, a worker shut down the
+  // moment respondWith settles never reaches the cache.put, and the app stays
+  // pinned to the build it first installed.
+  event.waitUntil(fresh);
 
   if (cached) return cached;
   const response = await fresh;

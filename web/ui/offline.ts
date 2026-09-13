@@ -2,9 +2,9 @@
 //
 // Hinting, solving and the mistake audit all run in the browser, and the
 // service worker precaches the shell, so the app is fully usable with no
-// network (see static/sw.js). Screenshot *reading* is the exception: the CV
-// reader is server-side, so /parse, /killer/parse and /share/parse are the only
-// things left that a lost connection can take away.
+// network (see static/sw.js). The reader is the exception: it is server-side,
+// so /parse, /killer/parse, /share/parse and /confirm are the only things left
+// that a lost connection can take away.
 //
 // Offline, `fetch` rejects with a bare TypeError — "Failed to fetch" — which
 // reads like the app broke. It did not: one path is unavailable and the rest
@@ -15,8 +15,9 @@
 // jsdom page harness substitutes browser APIs per boot (tests/ui/harness.js).
 
 const OFFLINE =
-  "You're offline — reading a screenshot needs a connection. " +
-  "Entering a board by hand, hints and solving all still work.";
+  "You're offline — reading a screenshot, and teaching the reader from your " +
+  "corrections, both need a connection. Entering a board by hand, hints and " +
+  "solving all still work.";
 
 /**
  * True when `err` is a connection failure rather than an answer from the server.
@@ -29,9 +30,10 @@ const OFFLINE =
  */
 function isNetworkFailure(err: unknown): boolean {
   if (!window.navigator.onLine) return true;
-  const message = err instanceof Error ? err.message : String(err);
-  return /failed to fetch|networkerror|network request failed|load failed/i.test(message);
+  return /failed to fetch|networkerror|network request failed|load failed/i.test(messageOf(err));
 }
+
+const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 /**
  * The status line for a reader request that threw.
@@ -41,6 +43,5 @@ function isNetworkFailure(err: unknown): boolean {
  */
 export function readingFailureMessage(err: unknown, prefix?: string): string {
   if (isNetworkFailure(err)) return OFFLINE;
-  const message = err instanceof Error ? err.message : String(err);
-  return prefix ? `${prefix}: ${message}` : message;
+  return prefix ? `${prefix}: ${messageOf(err)}` : messageOf(err);
 }
