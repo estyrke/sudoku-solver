@@ -15,6 +15,7 @@ import { PencilMarks } from "./ui/PencilMarks.tsx";
 import { Numpad } from "./ui/Numpad.tsx";
 import { ModeToggle } from "./ui/ModeToggle.tsx";
 import { DropZone } from "./ui/DropZone.tsx";
+import { readingFailureMessage } from "./ui/offline.ts";
 import { HintPanel, NO_HINT, type HintView } from "./ui/HintPanel.tsx";
 import { onSharedReading, type SharedReading } from "./ui/shared-reading.ts";
 import { Board } from "./sudoku/model.ts";
@@ -255,7 +256,7 @@ function SudokuPanel({ active }: { active: boolean }) {
       }
       applyParsed(data);
     } catch (err) {
-      setDropStatus("Upload failed: " + (err as Error).message);
+      setDropStatus(readingFailureMessage(err, "Upload failed"));
     }
   };
 
@@ -290,7 +291,7 @@ function SudokuPanel({ active }: { active: boolean }) {
           : data.detail || "Could not learn from this board.",
       );
     } catch (err) {
-      setDropStatus("Confirm failed: " + (err as Error).message);
+      setDropStatus(readingFailureMessage(err, "Confirm failed"));
     }
   };
 

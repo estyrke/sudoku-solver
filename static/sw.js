@@ -1,34 +1,138 @@
-// Service worker, here for one job: receive screenshots from the Android share
-// sheet.
+// Service worker, here for two jobs: receiving screenshots from the Android
+// share sheet, and keeping the app usable with no network at all.
 //
-// The manifest declares a share target at POST /share. When the user shares a
-// screenshot into the installed app, Chrome posts it here as multipart form
-// data — but a POST cannot render the app, so the file is stashed and the
-// browser redirected to the ordinary page, which picks it up (see pwa.js).
+// **The share handoff.** The manifest declares a share target at POST /share.
+// When the user shares a screenshot into the installed app, Chrome posts it
+// here as multipart form data — but a POST cannot render the app, so the file
+// is stashed and the browser redirected to the ordinary page, which picks it up
+// (see web/pwa.ts).
 //
 // Doing the handoff in a worker rather than server-side is what lets the
 // screenshot travel the exact code path a dropped or pasted one already
 // travels, error messages and all.
 //
-// Nothing here caches the app itself: this worker makes the app shareable, not
-// offline-capable. The board is reasoned about on the server, so an offline
-// mode would be a much bigger change than it looks.
+// **Offline hinting.** Every puzzle is reasoned about in the browser now: the
+// board models, the technique catalogues, hinting, solving and the mistake
+// audit all live inside static/dist/app.js. Nothing about answering a board
+// needs the server, so the only thing standing between the player and an
+// offline hint is loading the page. Precaching the shell on install removes it,
+// and from the first launch rather than only after a lucky online visit.
+//
+// Screenshot *reading* is still server-side (/parse, /killer/parse,
+// /share/parse), so it is deliberately left on the network: a cached answer
+// there would be a different board than the one in front of the player. Offline
+// those requests fail, and the page says so — see the reading paths in
+// web/sudoku.tsx and web/killer.tsx.
 
 const SHARE_CACHE = "shared-image";
 const SHARE_KEY = "/shared-image";
 
+// Bumping the version is what retires the previous deploy's assets: the new
+// worker precaches into a cache of its own and deletes every older one as it
+// activates. Between deploys the same names are revalidated in the background
+// on each use (see serveFromCache), so a redeploy that forgets this bump still
+// reaches the player on their second launch rather than never.
+const SHELL_CACHE = "app-shell-v1";
+
+// The app shell and the engine. `/` rather than `/static/index.html` because
+// that is what a navigation asks for and what the cache is then keyed by.
+const SHELL_ASSETS = [
+  "/",
+  "/static/dist/app.js",
+  "/static/style.css",
+  "/manifest.webmanifest",
+];
+
 // Take over as soon as possible: a share can arrive on the very next launch,
 // and a worker still waiting behind an old one would miss the POST.
-self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+self.addEventListener("install", (event) => {
+  event.waitUntil(precache());
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(Promise.all([dropOldCaches(), self.clients.claim()]));
+});
 
 self.addEventListener("fetch", (event) => {
-  const url = new URL(event.request.url);
-  if (event.request.method === "POST" && url.pathname === "/share") {
-    event.respondWith(receiveShare(event.request));
+  const request = event.request;
+  const url = new URL(request.url);
+
+  if (request.method === "POST" && url.pathname === "/share") {
+    event.respondWith(receiveShare(request));
+    return;
   }
-  // Everything else falls through to the network untouched.
+  const key = shellKey(request, url);
+  if (key) event.respondWith(serveFromCache(request, key));
+  // Everything else — the reader endpoints above all — falls through to the
+  // network untouched.
 });
+
+// --- offline shell ---------------------------------------------------------
+
+async function precache() {
+  const cache = await caches.open(SHELL_CACHE);
+  await cache.addAll(SHELL_ASSETS);
+}
+
+async function dropOldCaches() {
+  const names = await caches.keys();
+  // The share stash is not versioned: a screenshot can arrive moments before a
+  // new worker activates, and dropping it would drop the share with it.
+  const stale = names.filter((name) => name !== SHELL_CACHE && name !== SHARE_CACHE);
+  await Promise.all(stale.map((name) => caches.delete(name)));
+}
+
+/**
+ * The cache key `request` should be served from, or null to leave it alone.
+ *
+ * A navigation is answered with the cached page whatever its URL: the share
+ * redirect lands on /?shared=1, and an offline launch from the home screen can
+ * start anywhere in scope. index.html carries no per-URL markup, so one copy
+ * serves them all.
+ */
+function shellKey(request, url) {
+  if (request.method !== "GET" || url.origin !== self.location.origin) return null;
+  if (request.mode === "navigate") return new URL("/", self.location.origin).href;
+  return SHELL_ASSETS.includes(url.pathname) ? url.href : null;
+}
+
+/**
+ * Answer from the cache, refreshing it from the network behind the response.
+ *
+ * Cache-first is what makes an offline launch instant and certain; the
+ * revalidation behind it is what keeps a deploy from being pinned in the
+ * player's storage until the version above changes. The cost is that a new
+ * build is picked up on the launch *after* the one that fetched it, which for
+ * a puzzle helper is a fair trade for never showing a spinner over the board.
+ */
+async function serveFromCache(request, key) {
+  const cache = await caches.open(SHELL_CACHE);
+  const cached = await cache.match(key);
+
+  const fresh = fetch(request)
+    .then(async (response) => {
+      // A 404 or a captive portal's login page must not replace a good copy.
+      if (response && response.ok) await cache.put(key, response.clone());
+      return response;
+    })
+    .catch(() => undefined);
+
+  if (cached) return cached;
+  const response = await fresh;
+  return response || offlineResponse();
+}
+
+// Reached only when the network is gone *and* the asset was never cached —
+// a worker that took over before its precache finished, say. A plain body says
+// more than a dead tab.
+const offlineResponse = () =>
+  new Response("This app is offline and hasn't finished installing yet.", {
+    status: 503,
+    headers: { "content-type": "text/plain" },
+  });
+
+// --- share handoff ---------------------------------------------------------
 
 async function receiveShare(request) {
   try {
