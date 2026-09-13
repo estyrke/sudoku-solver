@@ -76,11 +76,15 @@ the hashes are published in
 ## Loading it
 
 `web/cv/runtime.ts` — `await loadOpenCV()` — in the browser and in Node alike.
-Emscripten emits the artifact with `MODULARIZE=1` and `EXPORT_NAME=cv`, so
-loading `opencv.js` defines a *factory*; calling it returns a promise that
-resolves once the WebAssembly is compiled and the runtime is initialised. The
-loader hides that, memoises the promise so concurrent callers share one
-runtime, and points Emscripten at the right URL for `opencv_js.wasm`.
+The shape it hides is not the one the build flags suggest. Emscripten emits the
+artifact with `MODULARIZE=1`, which would give you a factory to call, but
+OpenCV then wraps that in a UMD header which calls the factory for you. So
+loading `opencv.js` yields a *promise* — one that resolves, once the
+WebAssembly is compiled and the runtime initialised, to the runtime itself —
+and the wrapper takes its settings from a global `Module` object that has to
+exist before the script runs, which is why the loader sets `locateFile` first
+rather than passing it. On top of that it memoises the promise, so concurrent
+callers share one runtime rather than racing to build two heaps.
 
 `tests/cv/` is the smoke test: it loads the runtime and converts a small image
 to grayscale, and it checks that dnn and photo are absent and that the
