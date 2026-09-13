@@ -90,9 +90,14 @@ const fixture = (name: string): Board =>
 test("every reference Killer board solves, quickly", () => {
   // The budget is the point. Without cage-sum propagation the search took 108
   // seconds on one of these, which in the browser is not slowness but a tab
-  // that has stopped responding. These finish in milliseconds; one second is
-  // loose enough for a slow CI box and still two orders of magnitude short of
-  // the behaviour it guards against.
+  // that has stopped responding.
+  //
+  // Three seconds, not one. board4 is the slow one at around half a second on
+  // a developer's machine, which left under twice that as headroom — and a
+  // shared CI runner about half the speed tipped it twice in a row at 1.0s and
+  // 1.1s. What this guards against is two orders of magnitude away, so the
+  // looser number costs the guard nothing and stops it failing on a busy box.
+  // It is a ceiling, not a target: see #42 for actually making board4 faster.
   for (const name of REFERENCE) {
     const board = fixture(name);
     const started = performance.now();
@@ -110,6 +115,6 @@ test("every reference Killer board solves, quickly", () => {
       const before = board.cells[i].value;
       if (before !== null) assert.equal(solved.cells[i].value, before, `${name} at ${i}`);
     }
-    assert.ok(elapsed < 1000, `${name} took ${(elapsed / 1000).toFixed(1)}s`);
+    assert.ok(elapsed < 3000, `${name} took ${(elapsed / 1000).toFixed(1)}s`);
   }
 });
