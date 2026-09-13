@@ -41,12 +41,22 @@ link error.
 | Build | `opencv.js` | `opencv_js.wasm` | Total | gzipped |
 | --- | --- | --- | --- | --- |
 | This build | 139 KB | 4.03 MB | 4.17 MB | 1.12 MB |
-| Stock `build_js.py --build_wasm` | DEFAULT_JS | DEFAULT_WASM | DEFAULT_TOTAL | — |
+| Stock `build_js.py --build_wasm` | 10.4 MB | inlined | 10.4 MB | 3.57 MB |
 
-Both measured on the emitted files, uncompressed, with the same OpenCV and the
-same Emscripten — the only differences are the ones in the table above. The
-uncompressed figure is what a phone has to decode and compile, so it is the one
-worth watching; the gzipped figure is what crosses the wire.
+About two and a half times smaller, and better than three times smaller over
+the wire. Both were built here from the same OpenCV sources with the same
+Emscripten, so the difference is the module list and the flags in the table
+above and nothing else. The stock row has no separate `.wasm` because the
+default inlines it as base64; most of the gap is the modules that are not
+compiled in, and the inlining accounts for part of the rest.
+
+The uncompressed figure is what a phone has to decode and compile, so it is the
+one worth watching; the gzipped figure is what crosses the wire. Regenerate the
+stock build for comparison with:
+
+```sh
+python3 <sources>/platforms/js/build_js.py build_default --build_wasm
+```
 
 ## Regenerating
 
@@ -87,11 +97,14 @@ rather than passing it. On top of that it memoises the promise, so concurrent
 callers share one runtime rather than racing to build two heaps.
 
 `tests/cv/` is the smoke test: it loads the runtime and converts a small image
-to grayscale, and it checks that dnn and photo are absent and that the
-WebAssembly really is a separate file. It runs in CI.
+to grayscale, and it checks that dnn and photo really are absent, that the
+WebAssembly really is a separate file, that the browser branch points
+Emscripten at the right directory before the script loads, and that the
+committed artifact was built from the versions the script pins. It runs in CI.
 
 Nothing in the app calls the loader yet. The screenshot reader still runs on
 the server (`sudoku/reader/`, via `/parse` and friends); this artifact is
 groundwork for moving it into the browser, and until that lands the artifact is
 shipped but unused — in particular the service worker does not precache it,
-since precaching a megabyte nothing calls would slow every install for nothing.
+since precaching four megabytes nothing calls would slow every install for
+nothing.
