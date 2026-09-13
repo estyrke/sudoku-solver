@@ -1,0 +1,10 @@
+{
+  "name": "sudoku-solver-cv-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Smoke test for the committed OpenCV.js artifact and its loader (web/cv/runtime.ts). Kept apart from tests/engine because it is the only suite that compiles a megabyte of WebAssembly to say anything at all: it proves the artifact in static/vendor/opencv/ loads and computes, not that any puzzle logic is right.",
+  "scripts": {
+    "test": "node --experimental-strip-types --test"
+  }
+}
