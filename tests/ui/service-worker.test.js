@@ -112,15 +112,26 @@ function loadWorker({ fetch: net, seed = {} } = {}) {
     shell: () => {
       const names = [...caches.keys()].filter((name) => name !== "shared-image");
       assert.equal(names.length, 1, `exactly one shell cache, got ${names}`);
-      return { name: names[0], entries: named(names[0]) };
+      const entries = named(names[0]);
+      return {
+        name: names[0],
+        entries,
+        // Keys are absolute URLs; tests say what they mean in paths.
+        has: (path) => entries.has(absolute(path)),
+        get: (path) => entries.get(absolute(path)),
+      };
     },
   };
 }
 
 const urlOf = (request) => (typeof request === "string" ? request : request.url);
-const absolute = (key) => new URL(urlOf(key), ORIGIN).href;
-/** Cache keys are compared by absolute URL, the way the real Cache API does. */
-const keyOf = (key) => new URL(urlOf(key), ORIGIN).pathname;
+/**
+ * Cache keys, compared by absolute URL including the query — what the real
+ * Cache API does unless asked otherwise. Keying by path instead would quietly
+ * excuse a worker that stored `/?shared=1` and expected `/` to find it.
+ */
+const keyOf = (key) => new URL(urlOf(key), ORIGIN).href;
+const absolute = keyOf;
 
 /** Run the install (and then activate) handler to completion. */
 async function lifecycle(handlers, { activate = true } = {}) {
@@ -146,6 +157,7 @@ async function get(handlers, path, { method = "GET", mode = "no-cors" } = {}) {
   handlers.fetch({
     request: { url: new URL(path, ORIGIN).href, method, mode },
     respondWith: (value) => (responded = value),
+    waitUntil: () => {},
   });
   return responded === undefined ? undefined : await responded;
 }
@@ -159,6 +171,7 @@ async function postShare(handlers, file, { field = "image", method = "POST" } = 
   handlers.fetch({
     request: new Request(`${ORIGIN}/share`, method === "POST" ? { method, body: form } : { method }),
     respondWith: (value) => (responded = value),
+    waitUntil: () => {},
   });
   return responded === undefined ? undefined : await responded;
 }
@@ -177,8 +190,8 @@ describe("share target service worker", () => {
     const { handlers, stored } = loadWorker();
     await postShare(handlers, screenshot());
 
-    assert.deepEqual([...stored.keys()], ["/shared-image"]);
-    const kept = stored.get("/shared-image");
+    assert.deepEqual([...stored.keys()], [`${ORIGIN}/shared-image`]);
+    const kept = stored.get(`${ORIGIN}/shared-image`);
     assert.equal(kept.headers.get("content-type"), "image/png");
     assert.equal((await kept.arrayBuffer()).byteLength, 4, "the bytes survive the round trip");
   });
@@ -216,6 +229,7 @@ describe("share target service worker", () => {
     handlers.fetch({
       request: new Request(`${ORIGIN}/killer/parse`, { method: "POST", body: new FormData() }),
       respondWith: (value) => (responded = value),
+      waitUntil: () => {},
     });
     assert.equal(responded, undefined, "the app's own uploads must go to the network");
   });
@@ -237,12 +251,13 @@ describe("offline precache", () => {
     const worker = loadWorker();
     await lifecycle(worker.handlers);
 
-    const { entries } = worker.shell();
+    const shell = worker.shell();
     // The bundle is the engine: hinting and solving are inside app.js, so a
     // shell cached without it loads a page that cannot answer anything.
-    assert.ok(entries.has("/static/dist/app.js"), "the engine bundle is precached");
-    assert.ok(entries.has("/"), "so is the page itself");
-    assert.ok(entries.has("/static/style.css"), "and its stylesheet");
+    assert.ok(shell.has("/static/dist/app.js"), "the engine bundle is precached");
+    assert.ok(shell.has("/"), "so is the page itself");
+    assert.ok(shell.has("/static/style.css"), "and its stylesheet");
+    assert.ok(shell.has("/manifest.webmanifest"), "and the manifest, so an offline launch is still installable");
   });
 
   it("serves the shell from cache when the network is gone", async () => {
@@ -273,7 +288,7 @@ describe("offline precache", () => {
   it("refreshes a cached asset from the network when there is one", async () => {
     const worker = loadWorker();
     await lifecycle(worker.handlers);
-    const before = await worker.shell().entries.get("/static/dist/app.js").clone().text();
+    const before = await worker.shell().get("/static/dist/app.js").clone().text();
 
     const next = loadWorker({
       fetch: async () => new Response("a newer build", { status: 200 }),
@@ -284,10 +299,33 @@ describe("offline precache", () => {
 
     assert.equal(await served.text(), before, "the cached copy answers now");
     assert.equal(
-      await next.shell().entries.get("/static/dist/app.js").clone().text(),
+      await next.shell().get("/static/dist/app.js").clone().text(),
       "a newer build",
       "and the new one is in the cache for next launch",
     );
+  });
+
+  it("keeps itself alive for the refresh it fired off", async () => {
+    // respondWith settles on the cached copy immediately; the browser is free
+    // to shut the worker down the moment it does. Only waitUntil stops it, and
+    // without that the cache.put behind the response may never run — leaving
+    // the player pinned to the build they first installed.
+    const worker = loadWorker();
+    await lifecycle(worker.handlers);
+
+    const next = loadWorker({
+      fetch: async () => new Response("a newer build", { status: 200 }),
+      seed: Object.fromEntries(worker.caches),
+    });
+    const kept = [];
+    next.handlers.fetch({
+      request: { url: `${ORIGIN}/static/dist/app.js`, method: "GET", mode: "no-cors" },
+      respondWith: () => {},
+      waitUntil: (value) => kept.push(value),
+    });
+    await next.settled();
+
+    assert.equal(kept.length, 1, "the revalidation was handed to waitUntil");
   });
 
   it("does not leave a failed revalidation in the cache", async () => {
@@ -299,7 +337,7 @@ describe("offline precache", () => {
     await dead.settled();
 
     assert.equal(
-      await dead.shell().entries.get("/static/dist/app.js").clone().text(),
+      await dead.shell().get("/static/dist/app.js").clone().text(),
       `fresh ${ORIGIN}/static/dist/app.js`,
       "the good copy survives an offline launch",
     );
@@ -307,20 +345,22 @@ describe("offline precache", () => {
 
   it("drops a previous version's shell cache on activate", async () => {
     // Otherwise every deploy leaves its bundle behind in the user's storage.
-    const worker = loadWorker({ seed: { "app-shell-stale": [["/static/dist/app.js", null]] } });
+    const worker = loadWorker({
+      seed: { "app-shell-stale": [[`${ORIGIN}/static/dist/app.js`, null]] },
+    });
     await lifecycle(worker.handlers);
 
     assert.ok(!worker.caches.has("app-shell-stale"), "the old cache is gone");
-    assert.ok(worker.shell().entries.has("/static/dist/app.js"), "replaced, not just deleted");
+    assert.ok(worker.shell().has("/static/dist/app.js"), "replaced, not just deleted");
   });
 
   it("keeps the share stash across an upgrade", async () => {
     // It is not versioned: a share can arrive moments before a new worker
     // activates, and losing it would lose the screenshot.
-    const worker = loadWorker({ seed: { "shared-image": [["/shared-image", "kept"]] } });
+    const worker = loadWorker({ seed: { "shared-image": [[`${ORIGIN}/shared-image`, "kept"]] } });
     await lifecycle(worker.handlers);
 
-    assert.equal(worker.stored.get("/shared-image"), "kept");
+    assert.equal(worker.stored.get(`${ORIGIN}/shared-image`), "kept");
   });
 
   it("leaves the reader endpoints to the network", async () => {
