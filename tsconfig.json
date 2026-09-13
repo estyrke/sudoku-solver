@@ -1,9 +1,9 @@
 {
-  // The browser modules, plus tests/engine: pure-logic unit tests that run
-  // straight off this source with Node's native TypeScript support rather
-  // than through Vite — see tests/engine/package.json. The page/DOM harness
-  // in tests/ui stays plain CommonJS JavaScript and is deliberately out of
-  // scope here.
+  // The browser modules, plus the two suites that run straight off this
+  // source with Node's native TypeScript support rather than through Vite:
+  // tests/engine (pure puzzle logic) and tests/cv (the OpenCV artifact and
+  // its loader). The page/DOM harness in tests/ui stays plain CommonJS
+  // JavaScript and is deliberately out of scope here.
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
@@ -23,5 +23,5 @@
     "jsx": "react-jsx",
     "jsxImportSource": "preact"
   },
-  "include": ["web", "vite.config.ts", "tests/engine"]
+  "include": ["web", "vite.config.ts", "tests/engine", "tests/cv"]
 }

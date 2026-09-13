@@ -1,0 +1,5 @@
+OpenCV 4.10.0, built for the browser and Node by tools/opencv/build.sh.
+Emscripten 3.1.64 (fd61bacaf40131f74987e649a135f1dd559aff60).
+Modules: core and imgproc only. Bindings: tools/opencv/opencv_js.config.py.
+WebAssembly in a standalone opencv_js.wasm, SIMD enabled.
+Do not edit by hand — re-run the script. See docs/opencv-js-build.md.

@@ -65,6 +65,7 @@ still works; only sharing is missing. See
 | Browser engine | `web/sudoku/` | board model with Cages, the escalating technique catalogue (classic and Killer alike), `findHint`, `solve` and the mistake audit, in TypeScript — the Sudoku and Killer tabs' **Get hint** and **Solve** run locally, no server round trip |
 | Browser engine | `web/queens/` | the Queens board model (variable N, irregular Regions), its technique catalogue, `findHint` and the backtracking `solve` — a separate engine sharing no code with `web/sudoku/`, see `docs/adr/0001-sudoku-and-queens-as-separate-contexts.md` |
 | PWA shell | `static/manifest.webmanifest`, `static/sw.js`, `web/pwa.ts` | installability, the Android share target, and the offline precache of the shell + engine bundle |
+| OpenCV runtime | `static/vendor/opencv/`, `web/cv/runtime.ts`, `tools/opencv/` | a custom OpenCV.js build — core and imgproc only — committed as an artifact, and the loader that brings it up in the browser or Node. Groundwork for moving the reader into the browser; nothing calls it yet. See `docs/opencv-js-build.md` |
 
 Icons are drawn by `python -m tools.make_icons`; the PNGs it writes are what ship.
 

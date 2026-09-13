@@ -52,6 +52,11 @@ jobs:
       # type-stripping rather than through Vite — see tests/engine/package.json.
       - run: npm test
         working-directory: tests/engine
+      # tests/cv: the committed OpenCV.js artifact and its loader. Cheap to
+      # run and the only thing standing between a bad regeneration of
+      # static/vendor/opencv/ and a reader that cannot start.
+      - run: npm test
+        working-directory: tests/cv
       # tests/components: the shared widgets in web/ui/ on their own, under
       # Vitest — they are .tsx, which Node's type-stripping cannot compile.
       - run: npm ci
