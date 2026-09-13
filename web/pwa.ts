@@ -19,6 +19,7 @@
 // substitute them per boot — see tests/ui/harness.js.
 
 import { setShareStatus, type SharedReading } from "./ui/shared-reading.ts";
+import { readingFailureMessage } from "./ui/offline.ts";
 
 const SHARE_CACHE = "shared-image";
 const SHARE_KEY = "/shared-image";
@@ -85,6 +86,6 @@ export async function adoptSharedImage(): Promise<void> {
     window.PuzzleShell.activate(data.kind);
     puzzle.acceptShared(file, data as SharedReading);
   } catch (err) {
-    say("Could not open the shared screenshot: " + (err as Error).message);
+    say(readingFailureMessage(err, "Could not open the shared screenshot"), true);
   }
 }

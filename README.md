@@ -40,6 +40,15 @@ You can also skip images entirely and enter a board by hand.
 The board opens on the right tab: the app reads the screenshot and looks for cage
 outlines, sending it to *Killer* if it finds them and *Sudoku* if it doesn't.
 
+### Offline
+
+Once installed, the app works with no network: the service worker precaches the
+page, the stylesheet and the engine bundle, so hinting, solving and the mistake
+audit — all of which run in the browser — are available straight away. Reading a
+*screenshot* still needs the network, because the CV reader runs on the server;
+offline the app says so rather than failing silently. A new deploy is picked up
+in the background and takes effect on the next launch.
+
 Android only — iOS Safari doesn't implement share targets, and nor does Firefox for
 Android. If you add the app to your home screen from one of those, everything else
 still works; only sharing is missing. See
@@ -51,11 +60,11 @@ still works; only sharing is missing. See
 | --- | --- | --- |
 | Board model | `sudoku/model.py` | grid, units/peers, cages, candidate derivation, validity — reader support only; the engine's own copy is `web/sudoku/model.ts` |
 | CV reader | `sudoku/reader/` | grid detection → cell parsing → template-matched digits |
-| Web app | `app.py`, `web/` | `/parse`, `/confirm` + the board UI |
+| Web app | `app.py` | the screenshot readers (`/parse`, `/killer/parse`, `/share/parse`, `/confirm`) and the static files — it answers nothing about a board |
 | Browser UI | `web/app.tsx`, `web/ui/`, `web/<puzzle>.tsx` | the tab shell, the widgets every tab shares, and one file per puzzle type — Preact components, see `docs/adr/0004-preact-for-the-ui-layer.md` |
 | Browser engine | `web/sudoku/` | board model with Cages, the escalating technique catalogue (classic and Killer alike), `findHint`, `solve` and the mistake audit, in TypeScript — the Sudoku and Killer tabs' **Get hint** and **Solve** run locally, no server round trip |
 | Browser engine | `web/queens/` | the Queens board model (variable N, irregular Regions), its technique catalogue, `findHint` and the backtracking `solve` — a separate engine sharing no code with `web/sudoku/`, see `docs/adr/0001-sudoku-and-queens-as-separate-contexts.md` |
-| PWA shell | `static/manifest.webmanifest`, `static/sw.js`, `web/pwa.ts` | installability + the Android share target |
+| PWA shell | `static/manifest.webmanifest`, `static/sw.js`, `web/pwa.ts` | installability, the Android share target, and the offline precache of the shell + engine bundle |
 
 Icons are drawn by `python -m tools.make_icons`; the PNGs it writes are what ship.
 

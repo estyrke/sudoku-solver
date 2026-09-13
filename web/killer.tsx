@@ -28,6 +28,7 @@ import { PencilMarks } from "./ui/PencilMarks.tsx";
 import { Numpad } from "./ui/Numpad.tsx";
 import { ModeToggle } from "./ui/ModeToggle.tsx";
 import { DropZone } from "./ui/DropZone.tsx";
+import { readingFailureMessage } from "./ui/offline.ts";
 import { HintPanel, NO_HINT, type HintView } from "./ui/HintPanel.tsx";
 import {
   onSharedReading,
@@ -483,7 +484,7 @@ function KillerPanel({ active }: { active: boolean }) {
       }
       applyParsed(data);
     } catch (err) {
-      setDropStatus({ text: (err as Error).message, error: true });
+      setDropStatus({ text: readingFailureMessage(err), error: true });
     }
   };
 
