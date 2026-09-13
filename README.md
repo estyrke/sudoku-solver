@@ -125,6 +125,7 @@ npm ci && npm run typecheck && npm run build             # the browser modules
 npm --prefix tests/engine test                           # the browser engine, straight off .ts
 npm --prefix tests/ui ci && npm --prefix tests/ui test   # the page, under jsdom
 npm --prefix tests/components ci && npm --prefix tests/components test   # the shared widgets
+npm --prefix tests/cv test                               # the OpenCV artifact and its loader
 ```
 
 The Python suite covers the board model the reader builds on and the CV pipeline
@@ -154,7 +155,14 @@ numpad says about the selected cell, what each rung of the reveal ladder does an
 not give away, where a pencil mark lands in its 3x3 square. Vitest rather than
 `node --test`, because these are `.tsx` and Node's type-stripping cannot compile JSX.
 
-All three run on every push and pull request — see `.github/workflows/ci.yml`.
+`tests/cv/` is the odd one out: it asserts nothing about any puzzle. It loads the
+committed OpenCV build from `static/vendor/opencv/` through `web/cv/runtime.ts`
+and converts a small image, which is the cheapest way to catch a regenerated
+artifact that was linked without the modules the reader needs, emitted in a
+shape the loader does not expect, or committed without its `.wasm`. See
+`docs/opencv-js-build.md`.
+
+They all run on every push and pull request — see `.github/workflows/ci.yml`.
 
 ## Tuning for your app
 

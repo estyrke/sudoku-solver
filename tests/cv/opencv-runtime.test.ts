@@ -138,4 +138,20 @@ test("in a browser it points Emscripten at the artifact's own directory", async 
   }
 });
 
+
+test("the committed artifact came from the version the build script pins", () => {
+  // BUILD.txt is written by tools/opencv/build.sh from the versions pinned at
+  // its top, so the two agree at the moment of a build and can drift silently
+  // afterwards — someone bumps OPENCV_VERSION, and until the artifact is
+  // actually regenerated the repository claims a build it does not contain.
+  // Nothing else would notice: a stale artifact still loads and still works.
+  const script = readFileSync(new URL("../../tools/opencv/build.sh", import.meta.url), "utf8");
+  const stamp = readFileSync(new URL("../../static/vendor/opencv/BUILD.txt", import.meta.url), "utf8");
+
+  const pinned = (name: string) => script.match(new RegExp(`^${name}="([^"]+)"`, "m"))?.[1];
+
+  assert.match(stamp, new RegExp(`OpenCV ${pinned("OPENCV_VERSION")}\\b`));
+  assert.match(stamp, new RegExp(`Emscripten ${pinned("EMSCRIPTEN_VERSION")} \\(${pinned("EMSCRIPTEN_COMMIT")}\\)`));
+});
+
 test.after(() => resetOpenCVForTests());
