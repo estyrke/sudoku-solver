@@ -2,7 +2,7 @@
 with cages.
 
 Scoped to that one app's layout, the way the Queens reader is scoped to Meowdoku
-(``queens/docs/adr/0002``). Three things differ from the classic reader:
+(``web/queens/docs/adr/0002``). Three things differ from the classic reader:
 
 *Cages come from coloured borders, not shading.* Puzzle Page tints alternate 3x3
 **boxes** light blue — a checkerboard that has nothing to do with cages — so fill
