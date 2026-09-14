@@ -13,8 +13,8 @@
 // exist before the script runs. Everything here exists to hide those two
 // facts behind one `await`.
 //
-// Both screenshot readers (web/reader/) run on this. The share dispatcher is
-// still server-side.
+// Both screenshot readers (web/reader/) run on this, and so does the dispatch
+// that picks between them for a shared screenshot.
 
 /** The pieces of the runtime this project relies on.
  *

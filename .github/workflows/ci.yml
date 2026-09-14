@@ -63,6 +63,11 @@ jobs:
       # "ported at parity" is actually checked.
       - run: npm test
         working-directory: tests/reader
+      # tests/share: the step where a shared screenshot's reading becomes a
+      # tab. Neither neighbour can hold it — jsdom never reaches it, and the
+      # reader suite ends before tabs exist — so it runs on its own.
+      - run: npm test
+        working-directory: tests/share
       # tests/components: the shared widgets in web/ui/ on their own, under
       # Vitest — they are .tsx, which Node's type-stripping cannot compile.
       - run: npm ci

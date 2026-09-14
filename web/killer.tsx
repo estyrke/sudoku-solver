@@ -16,9 +16,10 @@
 // engine the Sudoku tab uses — Killer is part of that context, not a separate
 // one (docs/adr/0002-killer-sudoku-extends-sudoku-context.md). Reading a
 // screenshot runs in the page too (web/reader/killer-board.ts): the file is
-// decoded by the browser's own codecs and never uploaded anywhere. The share
-// dispatcher — deciding Killer versus Sudoku for a shared screenshot — is
-// still server-side.
+// decoded by the browser's own codecs and never uploaded anywhere. So does
+// deciding Killer versus Sudoku for a shared screenshot
+// (web/reader/share-dispatch.ts). A dropped screenshot and a shared one are
+// shaped by the same `killerReading`, so they arrive here identically.
 //
 // Browser APIs are reached through `window` (`window.fetch`, `window.FormData`,
 // `window.prompt`, …) rather than as bare globals, so the jsdom page harness can
@@ -31,7 +32,7 @@ import { PencilMarks } from "./ui/PencilMarks.tsx";
 import { Numpad } from "./ui/Numpad.tsx";
 import { ModeToggle } from "./ui/ModeToggle.tsx";
 import { DropZone } from "./ui/DropZone.tsx";
-import { messageOf } from "./ui/offline.ts";
+import { unreadableScreenshotMessage } from "./ui/offline.ts";
 import { HintPanel, NO_HINT, type HintView } from "./ui/HintPanel.tsx";
 import {
   onSharedReading,
@@ -39,7 +40,7 @@ import {
   type SharedReading,
 } from "./ui/shared-reading.ts";
 import { decodeImageFile } from "./reader/decode.ts";
-import { readKillerBoard } from "./reader/killer-board.ts";
+import { killerReading, readKillerBoard } from "./reader/killer-board.ts";
 import { Board, sumBounds } from "./sudoku/model.ts";
 import { audit, auditToWire, type WireAudit } from "./sudoku/audit.ts";
 import { findHint, hintToWire, nudge, type WireHint } from "./sudoku/hint.ts";
@@ -485,17 +486,9 @@ function KillerPanel({ active }: { active: boolean }) {
   const importImage = async (file: File) => {
     setDropStatus({ text: "Reading…" });
     try {
-      const read = await readKillerBoard(await decodeImageFile(file));
-      applyParsed({
-        board: read.board.toWire(),
-        unsure: read.unsure.map(([r, c]) => ({ r, c })),
-        fully_caged: read.board.isFullyCaged(),
-        checksum_ok: read.checksumOk,
-        sum_total: read.sumTotal,
-        needs_review: read.needsReview,
-      });
+      applyParsed(killerReading(await readKillerBoard(await decodeImageFile(file))));
     } catch (err) {
-      setDropStatus({ text: `Could not read that screenshot: ${messageOf(err)}`, error: true });
+      setDropStatus({ text: unreadableScreenshotMessage(err), error: true });
     }
   };
 

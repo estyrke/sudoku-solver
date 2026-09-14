@@ -26,7 +26,7 @@
 // decoder next door.
 
 import { loadOpenCV, type OpenCVRuntime } from "../cv/runtime.ts";
-import { Board, Cage, DIGITS, N, sumBounds, type Cell, type Coord } from "../sudoku/model.ts";
+import { Board, Cage, DIGITS, N, sumBounds, type Cell, type Coord, type WireBoard } from "../sudoku/model.ts";
 import { parseCell, withLabels, type MarkBand } from "./cell-parse.ts";
 import { classifyGlyph } from "./classify.ts";
 import { findGridQuad } from "./grid-detect.ts";
@@ -177,6 +177,35 @@ export async function readKillerBoard(image: Pixels): Promise<KillerRead> {
 
   const sumTotal = cages.reduce((n, cage) => n + cage.sum, 0);
   return new KillerRead(new Board(cells, cages), unsure, sumTotal);
+}
+
+/** A Killer reading in the shape the Killer tab takes, however it arrived.
+ *
+ * The tab renders a dropped screenshot and a shared one through one
+ * `applyParsed`, which is what keeps the two paths from drifting (ADR 0003).
+ * That only holds if there is one shaping too, so it lives here beside the
+ * read it shapes rather than in either caller. The field names are the
+ * server's, from when this payload came over HTTP; they stay until the tab's
+ * own wire form is revisited. */
+export interface KillerReading {
+  board: WireBoard;
+  unsure: { r: number; c: number }[];
+  fully_caged: boolean;
+  checksum_ok: boolean;
+  sum_total: number;
+  needs_review: boolean;
+}
+
+/** What the Killer tab shows for `read`. */
+export function killerReading(read: KillerRead): KillerReading {
+  return {
+    board: read.board.toWire(),
+    unsure: read.unsure.map(([r, c]) => ({ r, c })),
+    fully_caged: read.board.isFullyCaged(),
+    checksum_ok: read.checksumOk,
+    sum_total: read.sumTotal,
+    needs_review: read.needsReview,
+  };
 }
 
 /** Crop the board out of the app chrome and square it up.
