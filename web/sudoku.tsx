@@ -1,8 +1,9 @@
 // Classic Sudoku tab: editable board, manual entry, screenshot import, hints
 // and solving.
 //
-// Hinting and solving run the ported engine in the page (web/sudoku/*.ts); the
-// only thing left that talks to the server is reading a screenshot.
+// Hinting, solving and now reading all run in the page (web/sudoku/*.ts and
+// web/reader/). The only thing left here that talks to the server is teaching
+// the digit recognizer from a confirmed reading.
 //
 // Browser APIs are reached through `window` (`window.fetch`, `window.FormData`,
 // …) rather than as bare globals, so the jsdom page harness can substitute them
@@ -18,6 +19,8 @@ import { DropZone } from "./ui/DropZone.tsx";
 import { readingFailureMessage } from "./ui/offline.ts";
 import { HintPanel, NO_HINT, type HintView } from "./ui/HintPanel.tsx";
 import { onSharedReading, type SharedReading } from "./ui/shared-reading.ts";
+import { decodeImageFile } from "./reader/decode.ts";
+import { readClassicBoard } from "./reader/read-board.ts";
 import { Board } from "./sudoku/model.ts";
 import { findHint, hintToWire, nudge, type WireHint } from "./sudoku/hint.ts";
 import { solve } from "./sudoku/solver.ts";
@@ -34,7 +37,7 @@ interface Cell {
   low_confidence: boolean;
 }
 
-/** A cell as the server sends and receives it. */
+/** A cell as the reader produces it, and as the share target sends it. */
 interface WireCell {
   value: number | null;
   is_given?: boolean;
@@ -241,22 +244,23 @@ function SudokuPanel({ active }: { active: boolean }) {
     );
   };
 
-  const sendImage = async (file: File) => {
+  /**
+   * Read a screenshot, here in the page.
+   *
+   * Nothing about this uploads the image: the file is decoded by the browser's
+   * own codecs and the board is read from those pixels by the ported reader
+   * (web/reader/). The first read fetches the reader's assets — the OpenCV
+   * runtime and the digit exemplars — and later ones do not.
+   */
+  const readImage = async (file: File) => {
     setImageFile(file);
     setCanConfirm(false);
     setDropStatus("Reading board…");
-    const fd = new window.FormData();
-    fd.append("image", file);
     try {
-      const res = await window.fetch("/parse", { method: "POST", body: fd });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        setDropStatus(data.detail || data.reason || "Could not read the image.");
-        return;
-      }
-      applyParsed(data);
+      const board = await readClassicBoard(await decodeImageFile(file));
+      applyParsed({ board: board.toWire() });
     } catch (err) {
-      setDropStatus(readingFailureMessage(err, "Upload failed"));
+      setDropStatus(`Could not read that screenshot: ${err instanceof Error ? err.message : err}`);
     }
   };
 
@@ -334,7 +338,7 @@ function SudokuPanel({ active }: { active: boolean }) {
         prompt="Drop / paste a screenshot here"
         status={dropStatus}
         active={active}
-        onFile={sendImage}
+        onFile={readImage}
       />
 
       <div class="layout">

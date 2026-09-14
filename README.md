@@ -44,9 +44,10 @@ outlines, sending it to *Killer* if it finds them and *Sudoku* if it doesn't.
 
 Once installed, the app works with no network: the service worker precaches the
 page and everything it needs to run — stylesheet, manifest, engine bundle — so hinting, solving and the mistake
-audit — all of which run in the browser — are available straight away. Reading a
-*screenshot* still needs the network, because the CV reader runs on the server;
-offline the app says so rather than failing silently. A new deploy is picked up
+audit — all of which run in the browser — are available straight away. A classic
+Sudoku screenshot is read in the browser too, so it never leaves the device.
+Reading a *Killer* screenshot still needs the network, because that reader is
+still server-side; offline the app says so rather than failing silently. A new deploy is picked up
 in the background and takes effect on the next launch.
 
 Android only — iOS Safari doesn't implement share targets, and nor does Firefox for
@@ -59,13 +60,14 @@ still works; only sharing is missing. See
 | Layer | Where | What |
 | --- | --- | --- |
 | Board model | `sudoku/model.py` | grid, units/peers, cages, candidate derivation, validity — reader support only; the engine's own copy is `web/sudoku/model.ts` |
-| CV reader | `sudoku/reader/` | grid detection → cell parsing → template-matched digits |
-| Web app | `app.py` | the screenshot readers (`/parse`, `/killer/parse`, `/share/parse`, `/confirm`) and the static files — it answers nothing about a board |
+| CV reader | `sudoku/reader/` | grid detection → cell parsing → template-matched digits. Still what reads a Killer screenshot and what the classifier learns from; the classic path is ported to `web/reader/` |
+| Browser reader | `web/reader/`, `static/reader/` | the same pipeline in TypeScript on OpenCV.js — a classic screenshot is decoded by the browser's own codecs and read in the page, with no upload. Ported at parity, thresholds and all, and pinned cell-for-cell to what the Python reader reads. See `docs/reader-assets.md` |
+| Web app | `app.py` | the screenshot readers (`/killer/parse`, `/share/parse`, `/confirm`) and the static files — it answers nothing about a board |
 | Browser UI | `web/app.tsx`, `web/ui/`, `web/<puzzle>.tsx` | the tab shell, the widgets every tab shares, and one file per puzzle type — Preact components, see `docs/adr/0004-preact-for-the-ui-layer.md` |
 | Browser engine | `web/sudoku/` | board model with Cages, the escalating technique catalogue (classic and Killer alike), `findHint`, `solve` and the mistake audit, in TypeScript — the Sudoku and Killer tabs' **Get hint** and **Solve** run locally, no server round trip |
 | Browser engine | `web/queens/` | the Queens board model (variable N, irregular Regions), its technique catalogue, `findHint` and the backtracking `solve` — a separate engine sharing no code with `web/sudoku/`, see `docs/adr/0001-sudoku-and-queens-as-separate-contexts.md` |
 | PWA shell | `static/manifest.webmanifest`, `static/sw.js`, `web/pwa.ts` | installability, the Android share target, and the offline precache of the shell + engine bundle |
-| OpenCV runtime | `static/vendor/opencv/`, `web/cv/runtime.ts`, `tools/opencv/` | a custom OpenCV.js build — core and imgproc only — committed as an artifact, and the loader that brings it up in the browser or Node. Groundwork for moving the reader into the browser; nothing calls it yet. See `docs/opencv-js-build.md` |
+| OpenCV runtime | `static/vendor/opencv/`, `web/cv/runtime.ts`, `tools/opencv/` | a custom OpenCV.js build — core and imgproc only — committed as an artifact, and the loader that brings it up in the browser or Node. What the browser reader runs on. See `docs/opencv-js-build.md` |
 
 Icons are drawn by `python -m tools.make_icons`; the PNGs it writes are what ship.
 
@@ -117,6 +119,10 @@ fonts so the first read isn't blank, and **learns** from every confirmed board
 (`/confirm` → `sudoku/reader/calibrate.py`), adapting to your specific app. Learned
 exemplars live under `templates/<digit>/` and are git-ignored.
 
+The seeds are rendered once and committed rather than rendered at import, because
+`cv2.putText` anti-aliases differently across platforms. The browser reader ships
+the same bytes as a fetchable asset — see `docs/reader-assets.md`.
+
 ## Tests
 
 ```bash
@@ -126,6 +132,7 @@ npm --prefix tests/engine test                           # the browser engine, s
 npm --prefix tests/ui ci && npm --prefix tests/ui test   # the page, under jsdom
 npm --prefix tests/components ci && npm --prefix tests/components test   # the shared widgets
 npm --prefix tests/cv test                               # the OpenCV artifact and its loader
+npm --prefix tests/reader test                           # the browser screenshot reader
 ```
 
 The Python suite covers the board model the reader builds on and the CV pipeline
@@ -155,6 +162,13 @@ numpad says about the selected cell, what each rung of the reveal ladder does an
 not give away, where a pencil mark lands in its 3x3 square. Vitest rather than
 `node --test`, because these are `.tsx` and Node's type-stripping cannot compile JSX.
 
+`tests/reader/` is the parity gate for the browser reader. It runs the ported
+pipeline against the same committed fixture the Python suite reads and compares
+the result to the board the Python reader produces from it — every value, Given
+and Pencil mark, in one assertion — plus the pipeline-level Pencil-mark cases
+ported from `tests/test_reader.py`. Fixtures are decoded by a small PNG decoder,
+because the reader itself takes decoded pixels and leaves decoding to its caller.
+
 `tests/cv/` is the odd one out: it asserts nothing about any puzzle. It loads the
 committed OpenCV build from `static/vendor/opencv/` through `web/cv/runtime.ts`
 and converts a small image, which is the cheapest way to catch a regenerated
@@ -169,4 +183,6 @@ They all run on every push and pull request — see `.github/workflows/ci.yml`.
 The reader is general but a few thresholds in `sudoku/reader/cell_parse.py`
 (`VALUE_MIN_H`, `MARK_MIN_H/MAX_H`, `SAT_GIVEN_MAX`, `VALUE_CONF`) and the given-vs-
 entered colour heuristic may want tuning once real screenshots are available. The
-"Confirm reading" loop handles font adaptation automatically.
+"Confirm reading" loop handles font adaptation automatically. `web/reader/cell-parse.ts`
+carries the same thresholds at the same values; changing one without the other is
+what the parity test exists to catch.

@@ -19,11 +19,17 @@
 // and from the first launch rather than only after a lucky online visit. What
 // "the shell" means is SHELL_ASSETS below, and nowhere else.
 //
-// Screenshot *reading* is still server-side (/parse, /killer/parse,
-// /share/parse), so it is deliberately left on the network: a cached answer
-// there would be a different board than the one in front of the player. Offline
-// those requests fail, and the page says so — see the reading paths in
-// web/sudoku.tsx and web/killer.tsx.
+// Classic screenshots are read in the page too now (web/reader/), so the
+// Sudoku tab needs no network either. Killer reading and the share dispatch
+// (/killer/parse, /share/parse) are still server-side, and are deliberately
+// left on the network: a cached answer there would be a different board than
+// the one in front of the player. Offline those requests fail, and the page
+// says so — see the reading path in web/killer.tsx.
+//
+// The reader's own assets — the OpenCV runtime under /static/vendor/opencv/ and
+// the digit exemplars under /static/reader/ — are not precached: they are
+// several megabytes that only a player who reads a screenshot ever needs, so
+// they are left to the ordinary HTTP cache for now.
 
 const SHARE_CACHE = "shared-image";
 const SHARE_KEY = "/shared-image";

@@ -1,0 +1,10 @@
+{
+  "name": "sudoku-solver-reader-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Tests for the browser screenshot reader (web/reader/). Runs straight off the .ts source via Node's native type-stripping, against the same committed OpenCV.js artifact the browser loads, so the parity these tests claim is parity with what ships. Kept apart from tests/cv, which only proves that artifact comes up at all.",
+  "scripts": {
+    "test": "node --experimental-strip-types --test"
+  }
+}
