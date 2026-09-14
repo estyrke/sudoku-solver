@@ -13,8 +13,8 @@
 // exist before the script runs. Everything here exists to hide those two
 // facts behind one `await`.
 //
-// The classic screenshot reader (web/reader/) runs on this. The Killer reader
-// and the share dispatcher are still server-side.
+// Both screenshot readers (web/reader/) run on this. The share dispatcher is
+// still server-side.
 
 /** The pieces of the runtime this project relies on.
  *

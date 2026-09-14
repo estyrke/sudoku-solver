@@ -119,7 +119,7 @@ export function cellInk(cv: OpenCVRuntime, cell: Pixels): Gray {
 }
 
 /** One labelled blob, as `connectedComponentsWithStats` describes it. */
-interface Labelled {
+export interface Labelled {
   label: number;
   x: number;
   y: number;
@@ -131,15 +131,19 @@ interface Labelled {
 /**
  * Label the blobs of `ink` and hand them to `body` along with the label image.
  *
- * The two callers want different things out of the same pass — one crops each
- * blob out, the other erases some of them — but the pass itself, its stats
- * layout and the heap memory it has to free are identical, and doing it twice
- * in two shapes is how the two would drift apart.
+ * The callers in this module want different things out of the same pass —
+ * one crops each blob out, the other erases some of them — but the pass
+ * itself, its stats layout and the heap memory it has to free are identical,
+ * and doing it twice in two shapes is how the two would drift apart. The
+ * Killer reader's cage-sum crop (killer-board.ts) is a third shape again —
+ * it wants the blobs' bounding boxes to filter by, not `components`' cropped
+ * masks — so it takes this scaffolding directly rather than layering a
+ * fourth helper on top of `components`.
  *
  * `labels` is only valid inside `body`: it is a view onto WebAssembly memory
  * that is freed on the way out.
  */
-function withLabels<T>(
+export function withLabels<T>(
   cv: OpenCVRuntime,
   ink: Gray,
   body: (blobs: Labelled[], labels: Int32Array) => T,

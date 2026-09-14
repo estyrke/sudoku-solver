@@ -364,12 +364,16 @@ describe("offline precache", () => {
   });
 
   it("leaves the reader endpoints to the network", async () => {
-    // Reading a screenshot is still server-side; a cached answer would be a
-    // different board than the one the player just shared.
+    // Nothing calls these any more — both readers run in the page — but the
+    // routes still exist server-side, and a cached answer from one would be a
+    // different board than the one the player just shared. This is the same
+    // guard against a POST to any other path as "ignores a POST to any other
+    // path" above, just for the specific paths that used to matter here.
     const worker = loadWorker();
     await lifecycle(worker.handlers);
 
     assert.equal(await get(worker.handlers, "/parse", { method: "POST" }), undefined);
+    assert.equal(await get(worker.handlers, "/killer/parse", { method: "POST" }), undefined);
     assert.equal(await get(worker.handlers, "/share/parse", { method: "POST" }), undefined);
   });
 });

@@ -1,11 +1,11 @@
 // What to say when a request to the reader fails.
 //
-// Hinting, solving, the mistake audit and classic screenshot reading all run
-// in the browser, and the service worker precaches the shell, so the app is
-// largely usable with no network (see static/sw.js). What is left server-side
-// is the Killer reader, the share dispatcher and the classifier's learning
-// step — /killer/parse, /share/parse and /confirm — and they are the only
-// things a lost connection can now take away.
+// Hinting, solving, the mistake audit and both screenshot readers all run in
+// the browser, and the service worker precaches the shell, so the app is
+// largely usable with no network (see static/sw.js). What is left
+// server-side is the share dispatcher and the classifier's learning step —
+// /share/parse and /confirm — and they are the only things a lost connection
+// can now take away.
 //
 // Offline, `fetch` rejects with a bare TypeError — "Failed to fetch" — which
 // reads like the app broke. It did not: one path is unavailable and the rest
