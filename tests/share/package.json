@@ -1,0 +1,10 @@
+{
+  "name": "sudoku-solver-share-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Tests for the step where a shared screenshot's reading becomes a tab (web/pwa.ts's handToTab). Its own suite because it belongs to neither neighbour: tests/ui boots the real page under jsdom, which can neither decode an image nor start OpenCV, so a whole share there never reaches this step; tests/reader ends at the reading and knows nothing about tabs. Runs straight off the .ts source via Node's native type-stripping, against a hand-built window.",
+  "scripts": {
+    "test": "node --experimental-strip-types --test"
+  }
+}

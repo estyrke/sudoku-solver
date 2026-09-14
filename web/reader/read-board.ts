@@ -11,8 +11,8 @@
 // formats OpenCV itself would not decode. In tests, fixtures are decoded by a
 // small PNG decoder.
 //
-// The Killer reader is a sibling port, web/reader/killer-board.ts. The share
-// dispatcher is still server-side.
+// The Killer reader is a sibling port, web/reader/killer-board.ts, and
+// web/reader/share-dispatch.ts picks between the two for a shared screenshot.
 
 import { loadOpenCV } from "../cv/runtime.ts";
 import { Board, type Cell } from "../sudoku/model.ts";

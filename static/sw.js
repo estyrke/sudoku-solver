@@ -20,11 +20,10 @@
 // "the shell" means is SHELL_ASSETS below, and nowhere else.
 //
 // Classic and Killer screenshots are both read in the page now (web/reader/),
-// so neither tab needs a network request to read one. The share dispatch
-// (/share/parse) is still server-side — it decides Killer versus Sudoku for a
-// shared screenshot — and is deliberately left on the network: a cached
-// answer there would be a different board than the one in front of the
-// player. Offline that request fails, and the page says so.
+// and so is the choice between the two readers for a shared screenshot
+// (web/reader/share-dispatch.ts), so no screenshot path needs a network
+// request at all. Nothing here has to keep a route off the cache for the sake
+// of one.
 //
 // The reader's own assets — the OpenCV runtime under /static/vendor/opencv/ and
 // the digit exemplars under /static/reader/ — are not precached: they are
