@@ -1,0 +1,494 @@
+{
+  "cells": [
+    {
+      "value": 1,
+      "is_given": true,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": 2,
+      "is_given": true,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": 3,
+      "is_given": true,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": 4,
+      "is_given": true,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": 5,
+      "is_given": true,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": 6,
+      "is_given": true,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [
+        1,
+        5,
+        9
+      ],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": 7,
+      "is_given": true,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": 8,
+      "is_given": true,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": 2,
+      "is_given": true,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": 9,
+      "is_given": true,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    },
+    {
+      "value": null,
+      "is_given": false,
+      "pencil_marks": [],
+      "low_confidence": false
+    }
+  ]
+}

@@ -12,8 +12,9 @@ concurrency:
 
 jobs:
   # Model, techniques, solver, audit and the CV reader. The reader's digit
-  # exemplars are baked into sudoku/reader/glyph_seeds.npz rather than rendered
-  # at import, precisely so this job agrees with a developer's macOS run —
+  # exemplars are baked into sudoku/reader/glyph_seeds.npz, and its synthetic
+  # classic board into tests/fixtures/, rather than being rendered at import or
+  # at test time, precisely so this job agrees with a developer's macOS run —
   # cv2.putText anti-aliases differently across platforms.
   python:
     name: Python tests
@@ -57,6 +58,11 @@ jobs:
       # static/vendor/opencv/ and a reader that cannot start.
       - run: npm test
         working-directory: tests/cv
+      # tests/reader: the ported screenshot reader, held to the board the
+      # Python reader produces from the same committed fixture. This is where
+      # "ported at parity" is actually checked.
+      - run: npm test
+        working-directory: tests/reader
       # tests/components: the shared widgets in web/ui/ on their own, under
       # Vitest — they are .tsx, which Node's type-stripping cannot compile.
       - run: npm ci

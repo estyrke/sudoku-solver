@@ -1,10 +1,13 @@
 // Reading a screenshot with no network.
 //
-// Hinting and solving are local now, so the app is expected to work offline —
-// which is exactly what makes the one remaining server-side path a trap. The
-// reader lives on the server, so offline it cannot run, and `fetch` rejects
-// with a bare "Failed to fetch" that reads like a crash. These tests pin the
-// honest version: say the connection is the problem, and say that the rest of
+// The Sudoku tab reads in the page now (web/reader/), so for classic boards
+// there is no network to lose: these tests pin that, by booting with a `fetch`
+// that records every call and asserting the reading path never reaches it.
+//
+// Killer reading and the share dispatcher are still server-side, and that is
+// what keeps the rest of this file: offline those requests cannot run, and
+// `fetch` rejects with a bare "Failed to fetch" that reads like a crash. The
+// honest version says the connection is the problem, and says that the rest of
 // the app still works.
 
 const { describe, it } = require("node:test");
@@ -14,14 +17,15 @@ const { boot } = require("./harness");
 
 /** Boot a tab with the network gone, and paste a screenshot into its drop zone. */
 async function pasteOffline(tab, { onLine = false, fetch } = {}) {
+  const calls = [];
   const ui = await boot({
     activate: tab,
-    fetch:
-      fetch ||
-      (async () => {
-        // What a browser does offline: a TypeError, with no response at all.
-        throw new TypeError("Failed to fetch");
-      }),
+    fetch: async (url, options) => {
+      calls.push(url);
+      if (fetch) return fetch(url, options);
+      // What a browser does offline: a TypeError, with no response at all.
+      throw new TypeError("Failed to fetch");
+    },
     setUp(window) {
       Object.defineProperty(window.navigator, "onLine", { value: onLine, configurable: true });
     },
@@ -36,35 +40,50 @@ async function pasteOffline(tab, { onLine = false, fetch } = {}) {
   window.dispatchEvent(event);
   await ui.flush();
   await ui.flush();
+  ui.calls = calls;
   return ui;
 }
 
 const statusOf = (ui, id) => ui.document.getElementById(id);
 
 describe("reading a screenshot offline", () => {
-  it("tells the Sudoku player the network is what is missing", async () => {
+  it("never asks the network to read a classic screenshot", async () => {
+    // The whole point of the port: the screenshot stays on the device. jsdom
+    // has no image decoder, so the read cannot finish here — but where it
+    // stops is itself the assertion, because a reader that still uploaded
+    // would have made its request long before it needed to decode anything.
+    const ui = await pasteOffline("sudoku");
+
+    assert.deepEqual(ui.calls, [], "reading a screenshot must not touch the network");
+  });
+
+  it("does not blame the connection when the Sudoku reader fails", async () => {
+    // Being offline has nothing to do with it any more, so a message saying so
+    // would send the player looking in the wrong place. The reader's own words
+    // instead, whatever they are.
     const ui = await pasteOffline("sudoku");
     const status = statusOf(ui, "dropStatus");
+
+    assert.match(status.textContent, /could not read/i);
+    assert.doesNotMatch(status.textContent, /offline/i);
+    assert.doesNotMatch(status.textContent, /Failed to fetch/);
+  });
+
+  it("tells the Killer player the network is what is missing", async () => {
+    const ui = await pasteOffline("killer");
+    const status = statusOf(ui, "kDropStatus");
 
     assert.match(status.textContent, /offline|connection/i);
     // The point of the message: the app is not broken, only this one path is.
     assert.match(status.textContent, /hint|solve/i);
     assert.doesNotMatch(status.textContent, /Failed to fetch/);
-  });
-
-  it("tells the Killer player the same thing", async () => {
-    const ui = await pasteOffline("killer");
-    const status = statusOf(ui, "kDropStatus");
-
-    assert.match(status.textContent, /offline|connection/i);
-    assert.match(status.textContent, /hint|solve/i);
     assert.ok(status.classList.contains("error"), "and shows it as a failure");
   });
 
-  it("still reports an ordinary reader failure in the reader's own words", async () => {
+  it("still reports an ordinary Killer reader failure in the reader's own words", async () => {
     // Only a network failure gets the offline wording. A screenshot the reader
     // could not make sense of is a different problem and keeps its message.
-    const ui = await pasteOffline("sudoku", {
+    const ui = await pasteOffline("killer", {
       onLine: true,
       fetch: async () => ({
         ok: false,
@@ -73,11 +92,13 @@ describe("reading a screenshot offline", () => {
       }),
     });
 
-    assert.match(statusOf(ui, "dropStatus").textContent, /no grid/);
+    assert.match(statusOf(ui, "kDropStatus").textContent, /no grid/);
   });
 
   it("says it about a shared screenshot too", async () => {
     // A share arrives while the app is open; the phone can be offline by then.
+    // The share dispatcher is still server-side, so this one is still a lost
+    // connection rather than a reader failure.
     const ui = await boot({
       activate: null,
       url: "http://localhost/?shared=1",

@@ -13,15 +13,15 @@
 // exist before the script runs. Everything here exists to hide those two
 // facts behind one `await`.
 //
-// Nothing calls this yet. The reader still runs on the server; this slice
-// ships the artifact and the way in, and a later one moves the reader onto it.
+// The classic screenshot reader (web/reader/) runs on this. The Killer reader
+// and the share dispatcher are still server-side.
 
 /** The pieces of the runtime this project relies on.
  *
  * OpenCV.js ships no type declarations, and hand-writing the whole surface
- * would be a large lie maintained by hand. This declares the handful of
- * members we actually name and leaves the rest reachable but untyped — honest
- * about what has been checked and what has not. */
+ * would be a large lie maintained by hand. This declares the members we
+ * actually name and leaves the rest reachable but untyped — honest about what
+ * has been checked and what has not. */
 export interface OpenCVRuntime {
   /** An image or matrix. Owns WebAssembly heap memory: every Mat has to be
    *  `delete()`d, since the JavaScript GC cannot see what it holds. */
@@ -31,14 +31,78 @@ export interface OpenCVRuntime {
     ones(rows: number, cols: number, type: number): OpenCVMat;
     zeros(rows: number, cols: number, type: number): OpenCVMat;
   };
+  /** A growable list of Mats, which is how the bindings return contours. Owns
+   *  heap memory like a Mat, and freeing it does not free what it holds. */
+  MatVector: { new (): OpenCVMatVector };
+  Size: { new (width: number, height: number): OpenCVSize };
+  Point: { new (x: number, y: number): OpenCVPoint };
+  Scalar: { new (v0?: number, v1?: number, v2?: number, v3?: number): number[] };
+
   CV_8UC1: number;
   CV_8UC3: number;
   CV_8UC4: number;
+  CV_32FC1: number;
+  CV_32FC2: number;
   COLOR_RGBA2GRAY: number;
   COLOR_RGB2GRAY: number;
+  COLOR_RGBA2RGB: number;
+  COLOR_RGB2HSV: number;
+  ADAPTIVE_THRESH_MEAN_C: number;
+  THRESH_BINARY_INV: number;
+  THRESH_OTSU: number;
+  RETR_EXTERNAL: number;
+  CHAIN_APPROX_SIMPLE: number;
+  INTER_LINEAR: number;
+  INTER_AREA: number;
+  BORDER_CONSTANT: number;
+
   /** Colour conversion — the first imgproc call the reader makes on a
    *  screenshot, and the one the Node smoke test exercises. */
   cvtColor(src: OpenCVMat, dst: OpenCVMat, code: number, dstChannels?: number): void;
+  matFromArray(rows: number, cols: number, type: number, values: ArrayLike<number>): OpenCVMat;
+  GaussianBlur(src: OpenCVMat, dst: OpenCVMat, ksize: OpenCVSize, sigmaX: number, sigmaY?: number, borderType?: number): void;
+  adaptiveThreshold(
+    src: OpenCVMat,
+    dst: OpenCVMat,
+    maxValue: number,
+    adaptiveMethod: number,
+    thresholdType: number,
+    blockSize: number,
+    c: number,
+  ): void;
+  dilate(
+    src: OpenCVMat,
+    dst: OpenCVMat,
+    kernel: OpenCVMat,
+    anchor?: OpenCVPoint,
+    iterations?: number,
+    borderType?: number,
+    borderValue?: number[],
+  ): void;
+  findContours(image: OpenCVMat, contours: OpenCVMatVector, hierarchy: OpenCVMat, mode: number, method: number): void;
+  contourArea(contour: OpenCVMat, oriented?: boolean): number;
+  arcLength(curve: OpenCVMat, closed: boolean): number;
+  approxPolyDP(curve: OpenCVMat, approxCurve: OpenCVMat, epsilon: number, closed: boolean): void;
+  getPerspectiveTransform(src: OpenCVMat, dst: OpenCVMat): OpenCVMat;
+  warpPerspective(
+    src: OpenCVMat,
+    dst: OpenCVMat,
+    m: OpenCVMat,
+    dsize: OpenCVSize,
+    flags?: number,
+    borderMode?: number,
+    borderValue?: number[],
+  ): void;
+  resize(src: OpenCVMat, dst: OpenCVMat, dsize: OpenCVSize, fx?: number, fy?: number, interpolation?: number): void;
+  threshold(src: OpenCVMat, dst: OpenCVMat, thresh: number, maxval: number, type: number): number;
+  connectedComponentsWithStats(
+    image: OpenCVMat,
+    labels: OpenCVMat,
+    stats: OpenCVMat,
+    centroids: OpenCVMat,
+    connectivity?: number,
+  ): number;
+
   [member: string]: unknown;
 }
 
@@ -46,10 +110,31 @@ export interface OpenCVMat {
   rows: number;
   cols: number;
   data: Uint8Array;
+  /** The same heap bytes seen as 32-bit floats. Only meaningful on a CV_32F
+   *  Mat; reading it on any other depth reinterprets the bytes silently. */
+  data32F: Float32Array;
+  /** Likewise for CV_32S — the depth `connectedComponentsWithStats` labels in. */
+  data32S: Int32Array;
   channels(): number;
   type(): number;
   delete(): void;
   [member: string]: unknown;
+}
+
+export interface OpenCVMatVector {
+  size(): number;
+  get(index: number): OpenCVMat;
+  delete(): void;
+}
+
+export interface OpenCVSize {
+  width: number;
+  height: number;
+}
+
+export interface OpenCVPoint {
+  x: number;
+  y: number;
 }
 
 /** Where the artifact is served from in the browser. app.py mounts static/ at

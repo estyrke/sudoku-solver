@@ -1,9 +1,10 @@
 {
-  // The browser modules, plus the two suites that run straight off this
+  // The browser modules, plus the three suites that run straight off this
   // source with Node's native TypeScript support rather than through Vite:
-  // tests/engine (pure puzzle logic) and tests/cv (the OpenCV artifact and
-  // its loader). The page/DOM harness in tests/ui stays plain CommonJS
-  // JavaScript and is deliberately out of scope here.
+  // tests/engine (pure puzzle logic), tests/cv (the OpenCV artifact and its
+  // loader) and tests/reader (the screenshot reader). The page/DOM harness in
+  // tests/ui stays plain CommonJS JavaScript and is deliberately out of scope
+  // here.
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
@@ -23,5 +24,5 @@
     "jsx": "react-jsx",
     "jsxImportSource": "preact"
   },
-  "include": ["web", "vite.config.ts", "tests/engine", "tests/cv"]
+  "include": ["web", "vite.config.ts", "tests/engine", "tests/cv", "tests/reader"]
 }

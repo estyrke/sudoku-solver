@@ -6,8 +6,14 @@ Run with::
 
 Every puzzle reasons entirely in the browser — board models, techniques, hints,
 solving and the mistake audit live in ``web/sudoku/`` and ``web/queens/`` — so
-nothing here answers for them. What is left is screenshot reading (``/parse``,
-``/killer/parse``, ``/share/parse``, ``/confirm``).
+nothing here answers for them. What is left is screenshot reading
+(``/killer/parse``, ``/share/parse``, ``/confirm``).
+
+``/parse`` is still served but no longer called: the Sudoku tab reads classic
+screenshots in the page now (``web/reader/``). It stays until the Killer reader
+and the share dispatcher follow it into the browser and this app is deleted
+whole, rather than being removed a route at a time — and the reader behind it
+is not dead either way, since ``/share/parse`` falls back to it.
 
 The CV reader is imported lazily so the logic + UI work even before OpenCV (and the
 reader module) are available.
@@ -83,7 +89,9 @@ def share_landing() -> FileResponse:
 @app.post("/parse")
 async def parse_endpoint(image: UploadFile = File(...)) -> dict:
     """Read a board from an uploaded screenshot. Wired to the CV reader, imported
-    lazily so the rest of the app runs without OpenCV installed."""
+    lazily so the rest of the app runs without OpenCV installed.
+
+    Nothing in the app calls this any more — see the module docstring."""
     try:
         from sudoku.reader.read_board import read_board_from_bytes
     except Exception as exc:  # pragma: no cover - depends on optional deps
