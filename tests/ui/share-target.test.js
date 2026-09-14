@@ -112,6 +112,22 @@ describe("android share target", () => {
       assert.equal(ui.panel.hidden, true, "the killer tab stays out of the way");
       assert.match(ui.document.getElementById("dropStatus").textContent, /Read board/);
     });
+
+    it("outlines the Cells the reader was not sure of", async () => {
+      // The reader moved into the page, but what it says about its own doubt
+      // still has to arrive on screen: an unflagged misread is one the player
+      // trusts and hints from. Both readings — this one and a dropped file —
+      // land through the same `applyParsed`, so this covers the drop path too,
+      // which jsdom cannot exercise end to end for want of an image decoder.
+      const wire = cells().map((c) => ({ ...c, low_confidence: false }));
+      wire[0] = { value: 7, pencil_marks: [], low_confidence: true };
+      const { ui } = await share("1", { reply: { kind: "sudoku", ok: true, board: { cells: wire } } });
+
+      const low = ui.document.querySelectorAll("#board .cell.low");
+      assert.equal(low.length, 1, "exactly the one flagged Cell should be outlined");
+      assert.equal(low[0].textContent, "7");
+      assert.match(ui.document.getElementById("dropStatus").textContent, /1 cell\(s\) flagged/);
+    });
   });
 
   describe("when the handoff breaks down", () => {

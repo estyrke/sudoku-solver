@@ -3,8 +3,8 @@
 We don't have the user's app screenshots yet, so the classic corpus is one
 rendered board — a printed grid, ten Givens, one cell of Pencil marks — and the
 assertion is that the reader recovers it. This validates the pipeline mechanics
-(grid splitting, value/candidate separation, classification) using the same
-seeded font templates the reader ships with.
+(grid splitting, separating a value from Pencil marks, classification) using the
+same seeded font templates the reader ships with.
 
 The board is committed pixels rather than rendered here, by
 ``tools/reader/render_classic_fixture.py``: ``cv2.putText`` does not anti-alias
@@ -21,6 +21,8 @@ import cv2
 import numpy as np
 import pytest
 
+from sudoku.reader.calibrate import ensure_seed
+from sudoku.reader.classify import TemplateStore
 from sudoku.reader.read_board import read_board
 
 CLASSIC = Path(__file__).parent / "fixtures" / "synthetic_classic_board.png"
@@ -42,8 +44,22 @@ def classic_board() -> np.ndarray:
     return img
 
 
+def seeded_store() -> TemplateStore:
+    """The shipped exemplars and nothing else.
+
+    ``read_board``'s default store is ``loaded_store()``, which first picks up
+    whatever ``/confirm`` has learned into ``templates/<digit>/`` — a directory
+    that is git-ignored and therefore different on every machine. Reading
+    through it would make these tests, and the pinned board they compare
+    against, say something about the developer's own screenshots rather than
+    about the reader. The browser reader has no such store to pick up, so this
+    is also the only store the two can be held to the same board through.
+    """
+    return ensure_seed(TemplateStore())
+
+
 def test_reader_recovers_values():
-    board = read_board(classic_board())
+    board = read_board(classic_board(), seeded_store())
     correct = sum(
         1 for (r, c), d in GIVENS.items() if board.value(r, c) == d
     )
@@ -56,7 +72,7 @@ def test_reader_recovers_values():
 
 
 def test_reader_reads_pencil_marks():
-    board = read_board(classic_board())
+    board = read_board(classic_board(), seeded_store())
     got = board.cell(*PENCIL_CELL).pencil_marks
     # at least two of the three small candidates should be recovered
     assert len(got & PENCIL_MARKS) >= 2, f"got {got}, expected ~{PENCIL_MARKS}"
@@ -71,7 +87,7 @@ def test_classic_board_matches_its_committed_read():
     test can fail: whichever reader moves first, this comparison or that one
     stops holding, rather than the two quietly drifting apart.
     """
-    board = read_board(classic_board())
+    board = read_board(classic_board(), seeded_store())
     committed = json.loads(CLASSIC_PINNED.read_text())
     assert board.to_dict() == committed, (
         f"{CLASSIC.name} no longer reads as {CLASSIC_PINNED.name} has it; "

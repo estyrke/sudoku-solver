@@ -74,11 +74,17 @@ if __name__ == "__main__":  # pragma: no cover - regeneration helper
     import sys
 
     sys.path.insert(0, str(ROOT))
+    from sudoku.reader.calibrate import ensure_seed
+    from sudoku.reader.classify import TemplateStore
     from sudoku.reader.read_board import read_board
 
     FIXTURE.parent.mkdir(parents=True, exist_ok=True)
     PINNED.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(FIXTURE), render_board())
-    board = read_board(cv2.imread(str(FIXTURE)))
+    # The shipped exemplars and nothing else. `read_board`'s default store picks
+    # up whatever /confirm has learned into the git-ignored `templates/`, which
+    # would pin this board to one machine's screenshots. See `seeded_store` in
+    # tests/test_reader.py.
+    board = read_board(cv2.imread(str(FIXTURE)), ensure_seed(TemplateStore()))
     PINNED.write_text(json.dumps(board.to_dict(), indent=2) + "\n")
     print(f"wrote {FIXTURE} and {PINNED}")

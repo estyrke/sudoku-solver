@@ -72,11 +72,6 @@ export function matOfGray(cv: OpenCVRuntime, gray: Gray): OpenCVMat {
   return mat;
 }
 
-/** A single-channel Mat's bytes, copied out of the heap. */
-export function grayOfMat(mat: OpenCVMat): Gray {
-  return { width: mat.cols, height: mat.rows, data: Uint8Array.from(mat.data) };
-}
-
 /** An RGBA Mat's bytes, copied out of the heap. */
 export function pixelsOfMat(mat: OpenCVMat): Pixels {
   return { width: mat.cols, height: mat.rows, data: Uint8Array.from(mat.data) };

@@ -34,7 +34,10 @@ function isNetworkFailure(err: unknown): boolean {
   return /failed to fetch|networkerror|network request failed|load failed/i.test(messageOf(err));
 }
 
-const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+/** What a thrown thing has to say for itself. Exported because a reader that
+ *  runs in the page fails without a connection ever being involved, and still
+ *  has to put something on the status line. */
+export const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 /**
  * The status line for a reader request that threw.
