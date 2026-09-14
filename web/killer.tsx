@@ -14,8 +14,11 @@
 //
 // Hinting, solving and the mistake audit all run in the page, against the same
 // engine the Sudoku tab uses — Killer is part of that context, not a separate
-// one (docs/adr/0002-killer-sudoku-extends-sudoku-context.md). The server is
-// asked for nothing but screenshot reading.
+// one (docs/adr/0002-killer-sudoku-extends-sudoku-context.md). Reading a
+// screenshot runs in the page too (web/reader/killer-board.ts): the file is
+// decoded by the browser's own codecs and never uploaded anywhere. The share
+// dispatcher — deciding Killer versus Sudoku for a shared screenshot — is
+// still server-side.
 //
 // Browser APIs are reached through `window` (`window.fetch`, `window.FormData`,
 // `window.prompt`, …) rather than as bare globals, so the jsdom page harness can
@@ -28,13 +31,15 @@ import { PencilMarks } from "./ui/PencilMarks.tsx";
 import { Numpad } from "./ui/Numpad.tsx";
 import { ModeToggle } from "./ui/ModeToggle.tsx";
 import { DropZone } from "./ui/DropZone.tsx";
-import { readingFailureMessage } from "./ui/offline.ts";
+import { messageOf } from "./ui/offline.ts";
 import { HintPanel, NO_HINT, type HintView } from "./ui/HintPanel.tsx";
 import {
   onSharedReading,
   onShareStatus,
   type SharedReading,
 } from "./ui/shared-reading.ts";
+import { decodeImageFile } from "./reader/decode.ts";
+import { readKillerBoard } from "./reader/killer-board.ts";
 import { Board, sumBounds } from "./sudoku/model.ts";
 import { audit, auditToWire, type WireAudit } from "./sudoku/audit.ts";
 import { findHint, hintToWire, nudge, type WireHint } from "./sudoku/hint.ts";
@@ -63,7 +68,7 @@ interface Reveal {
   level: number;
 }
 
-/** A reading of a Killer screenshot, from /killer/parse or the share target. */
+/** A reading of a Killer screenshot, from the in-page reader or the share target. */
 interface ParsedReading {
   board: {
     cells: { value: number | null; pencil_marks?: number[] }[];
@@ -468,23 +473,29 @@ function KillerPanel({ active }: { active: boolean }) {
     });
   };
 
+  /**
+   * Read a screenshot, here in the page.
+   *
+   * Nothing about this uploads the image: the file is decoded by the
+   * browser's own codecs and the board is read from those pixels by the
+   * ported reader (web/reader/killer-board.ts). The first read fetches the
+   * reader's assets — the OpenCV runtime and the digit exemplars — and later
+   * ones do not.
+   */
   const importImage = async (file: File) => {
     setDropStatus({ text: "Reading…" });
-    const body = new window.FormData();
-    body.append("image", file);
     try {
-      const res = await window.fetch("/killer/parse", { method: "POST", body });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setDropStatus({
-          text: data.detail || `Could not read that image (${res.status}).`,
-          error: true,
-        });
-        return;
-      }
-      applyParsed(data);
+      const read = await readKillerBoard(await decodeImageFile(file));
+      applyParsed({
+        board: read.board.toWire(),
+        unsure: read.unsure.map(([r, c]) => ({ r, c })),
+        fully_caged: read.board.isFullyCaged(),
+        checksum_ok: read.checksumOk,
+        sum_total: read.sumTotal,
+        needs_review: read.needsReview,
+      });
     } catch (err) {
-      setDropStatus({ text: readingFailureMessage(err), error: true });
+      setDropStatus({ text: `Could not read that screenshot: ${messageOf(err)}`, error: true });
     }
   };
 

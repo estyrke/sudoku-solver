@@ -44,11 +44,12 @@ outlines, sending it to *Killer* if it finds them and *Sudoku* if it doesn't.
 
 Once installed, the app works with no network: the service worker precaches the
 page and everything it needs to run — stylesheet, manifest, engine bundle — so hinting, solving and the mistake
-audit — all of which run in the browser — are available straight away. A classic
-Sudoku screenshot is read in the browser too, so it never leaves the device.
-Reading a *Killer* screenshot still needs the network, because that reader is
-still server-side; offline the app says so rather than failing silently. A new deploy is picked up
-in the background and takes effect on the next launch.
+audit — all of which run in the browser — are available straight away. Both a
+classic Sudoku screenshot and a Killer screenshot are read in the browser too, so
+neither ever leaves the device. Working out which tab a *shared* screenshot
+belongs to still needs the network; offline the app says so rather than failing
+silently. A new deploy is picked up in the background and takes effect on the
+next launch.
 
 Android only — iOS Safari doesn't implement share targets, and nor does Firefox for
 Android. If you add the app to your home screen from one of those, everything else
@@ -60,9 +61,9 @@ still works; only sharing is missing. See
 | Layer | Where | What |
 | --- | --- | --- |
 | Board model | `sudoku/model.py` | grid, units/peers, cages, candidate derivation, validity — reader support only; the engine's own copy is `web/sudoku/model.ts` |
-| CV reader | `sudoku/reader/` | grid detection → cell parsing → template-matched digits. Still what reads a Killer screenshot and what the classifier learns from; the classic path is ported to `web/reader/` |
-| Browser reader | `web/reader/`, `static/reader/` | the same pipeline in TypeScript on OpenCV.js — a classic screenshot is decoded by the browser's own codecs and read in the page, with no upload. Ported at parity, thresholds and all, and pinned cell-for-cell to what the Python reader reads. See `docs/reader-assets.md` |
-| Web app | `app.py` | the screenshot readers (`/killer/parse`, `/share/parse`, `/confirm`) and the static files — it answers nothing about a board. `/parse` is still served but no longer called by anything, and goes when this app does |
+| CV reader | `sudoku/reader/` | grid detection → cell parsing → template-matched digits, classic and Killer. What the classifier still learns from (`/confirm`); both reading paths are ported to `web/reader/` and no longer called for reading itself |
+| Browser reader | `web/reader/`, `static/reader/` | the same pipeline in TypeScript on OpenCV.js — a classic or Killer screenshot is decoded by the browser's own codecs and read in the page, with no upload. Ported at parity, thresholds and all, and pinned cell-for-cell (Killer: cage-for-cage, sum-for-sum) to what the Python reader reads. See `docs/reader-assets.md` |
+| Web app | `app.py` | the screenshot readers (`/killer/parse`, `/share/parse`, `/confirm`) and the static files — it answers nothing about a board. `/parse` and `/killer/parse` are still served but no longer called by anything, and go when this app does |
 | Browser UI | `web/app.tsx`, `web/ui/`, `web/<puzzle>.tsx` | the tab shell, the widgets every tab shares, and one file per puzzle type — Preact components, see `docs/adr/0004-preact-for-the-ui-layer.md` |
 | Browser engine | `web/sudoku/` | board model with Cages, the escalating technique catalogue (classic and Killer alike), `findHint`, `solve` and the mistake audit, in TypeScript — the Sudoku and Killer tabs' **Get hint** and **Solve** run locally, no server round trip |
 | Browser engine | `web/queens/` | the Queens board model (variable N, irregular Regions), its technique catalogue, `findHint` and the backtracking `solve` — a separate engine sharing no code with `web/sudoku/`, see `docs/adr/0001-sudoku-and-queens-as-separate-contexts.md` |

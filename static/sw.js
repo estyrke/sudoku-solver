@@ -19,12 +19,12 @@
 // and from the first launch rather than only after a lucky online visit. What
 // "the shell" means is SHELL_ASSETS below, and nowhere else.
 //
-// Classic screenshots are read in the page too now (web/reader/), so the
-// Sudoku tab needs no network either. Killer reading and the share dispatch
-// (/killer/parse, /share/parse) are still server-side, and are deliberately
-// left on the network: a cached answer there would be a different board than
-// the one in front of the player. Offline those requests fail, and the page
-// says so — see the reading path in web/killer.tsx.
+// Classic and Killer screenshots are both read in the page now (web/reader/),
+// so neither tab needs a network request to read one. The share dispatch
+// (/share/parse) is still server-side — it decides Killer versus Sudoku for a
+// shared screenshot — and is deliberately left on the network: a cached
+// answer there would be a different board than the one in front of the
+// player. Offline that request fails, and the page says so.
 //
 // The reader's own assets — the OpenCV runtime under /static/vendor/opencv/ and
 // the digit exemplars under /static/reader/ — are not precached: they are

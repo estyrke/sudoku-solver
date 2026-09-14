@@ -6,11 +6,15 @@
 // player has since fixed is worse than none at all.
 //
 // The audit and the hint engine both run in the page now, so there is no reply
-// left to stub: the board is loaded from a real read of a real screenshot
-// (tests/fixtures/killer_boards, produced by the Python reader) and every
-// verdict below is the engine's own. `fetch` is allowed only for that load, and
-// counted, so a regression that routes hinting back through the network fails
-// here rather than passing by coincidence.
+// left to stub: the board is one the reader has already read (tests/fixtures/
+// killer_boards, pinned against the Python reader — see tests/reader/) and
+// every verdict below is the engine's own. It is loaded through the same
+// `acceptShared` entry point a shared screenshot uses (web/pwa.ts), which
+// hands the tab an already-parsed reading directly — the reading itself is
+// what tests/reader/killer-board.test.ts covers, and jsdom has no image
+// decoder to run the drop path end to end. `fetch` throws, so a regression
+// that routes hinting back through the network fails here rather than passing
+// by coincidence.
 
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
@@ -24,7 +28,8 @@ const fixture = (name) =>
     fs.readFileSync(path.join(ROOT, "tests/fixtures/killer_boards", `${name}.json`), "utf8"),
   );
 
-/** A /killer/parse reply carrying an already-read board. */
+/** An already-parsed reading, the shape `acceptShared` and the old
+ *  /killer/parse reply both carry. */
 const reading = (board) => ({
   board,
   unsure: [],
@@ -59,7 +64,6 @@ const WRONG_AT_R5C5 = 1;
 
 describe("killer audit markers", () => {
   let ui;
-  let calls;
   const marked = () => ui.board.querySelectorAll(".kcell.mistake").length;
   const getHint = () => ui.fire(ui.inPanel("#kGetHint"), "click");
   const enter = (r, c, d) => {
@@ -67,38 +71,25 @@ describe("killer audit markers", () => {
     ui.fire(ui.digit(d), "click");
   };
 
-  /** Drop a screenshot on the page and let the (stubbed) reader answer with
-   * `board`. Everything after this point is the page's own engine. */
-  const load = async () => {
-    ui.fire(ui.inPanel("#kFile"), "change");
+  /** Hand the tab an already-read `board`, the way a shared screenshot does,
+   * and let the page's own engine take it from there. */
+  const load = async (board) => {
+    ui.window.PuzzleShell.get("killer").acceptShared(
+      new ui.window.File([], "board.png", { type: "image/png" }),
+      reading(board),
+    );
     await ui.flush();
     assert.equal(ui.inPanel("#kDropStatus").textContent.startsWith("Read 2"), true);
     ui.fire(ui.inPanel('[data-kmode="digits"]'), "click");
   };
 
   before(async () => {
-    calls = [];
-    let board = fixture("puzzle_page_killer_board3");
     ui = await boot({
-      fetch: async (url) => {
-        calls.push(url);
-        return { ok: true, json: async () => reading(board) };
-      },
-      setUp(window) {
-        // jsdom gives a file input no files; the page only ever passes the
-        // first one straight to FormData, which the stub above ignores.
-        window.FormData = class {
-          append() {}
-        };
-      },
-      // The file input only exists once the tab has rendered.
-      afterMount(window) {
-        Object.defineProperty(window.document.getElementById("kFile"), "files", {
-          value: [{ name: "board3.png" }],
-        });
+      fetch: async () => {
+        throw new Error("Killer auditing and hinting must not touch the network");
       },
     });
-    await load();
+    await load(fixture("puzzle_page_killer_board3"));
   });
 
   it("flags the cell the audit blames", () => {
@@ -144,12 +135,11 @@ describe("killer audit markers", () => {
     // has one solution, audits clean, and needs chain logic that nothing in
     // TECHNIQUES attempts — and no amount of further Killer work will change
     // that, which a fixture with cages on it could not promise.
-    ui.window.fetch = async (url) => {
-      calls.push(url);
-      return { ok: true, json: async () => reading(EASTER_MONSTER) };
-    };
     ui.fire(ui.inPanel('[data-kmode="cages"]'), "click");
-    ui.fire(ui.inPanel("#kFile"), "change");
+    ui.window.PuzzleShell.get("killer").acceptShared(
+      new ui.window.File([], "easter.png", { type: "image/png" }),
+      reading(EASTER_MONSTER),
+    );
     await ui.flush();
     assert.match(ui.inPanel("#kDropStatus").textContent, /^Read 0 cages\./);
     ui.fire(ui.inPanel('[data-kmode="digits"]'), "click");
@@ -177,9 +167,5 @@ describe("killer audit markers", () => {
     assert.equal(marked(), 0);
     assert.equal(ui.revealEl.hidden, false, "a part-caged board still gets a hint");
     assert.match(ui.hintEl.textContent, /Look at the 4-cage at r1c1/);
-  });
-
-  it("asked the network for nothing but the screenshot", () => {
-    assert.deepEqual(calls, ["/killer/parse", "/killer/parse"]);
   });
 });

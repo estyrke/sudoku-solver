@@ -1,10 +1,13 @@
 // The Killer tab's Solve button, driven end to end.
 //
 // Solve runs the ported engine (web/sudoku/model.ts, web/sudoku/solver.ts) in
-// the page, cage-sum propagation and all — see issue #21. The board comes from
-// a real read of a real screenshot; `fetch` is allowed for that read alone and
-// counted, so a regression that routes Solve back through the network fails
-// here rather than passing by coincidence.
+// the page, cage-sum propagation and all — see issue #21. The board is a
+// pinned reading (tests/fixtures/killer_boards — see tests/reader/) handed to
+// the tab through the same `acceptShared` entry point a shared screenshot uses
+// (web/pwa.ts); the reading itself is what tests/reader/killer-board.test.ts
+// covers, and jsdom has no image decoder to run the drop path end to end.
+// `fetch` throws, so a regression that routes Solve back through the network
+// fails here rather than passing by coincidence.
 
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
@@ -21,7 +24,7 @@ const BOARD = JSON.parse(
 );
 
 describe("killer solve", () => {
-  let ui, calls;
+  let ui;
   const shownValues = () =>
     Array.from({ length: 81 }, (_, i) => {
       const el = ui.board.children[i].querySelector(".val");
@@ -29,43 +32,29 @@ describe("killer solve", () => {
     });
 
   before(async () => {
-    calls = [];
     ui = await boot({
-      fetch: async (url) => {
-        calls.push(url);
-        return {
-          ok: true,
-          json: async () => ({
-            board: BOARD,
-            unsure: [],
-            fully_caged: true,
-            checksum_ok: true,
-            sum_total: 405,
-            needs_review: false,
-          }),
-        };
-      },
-      setUp(window) {
-        window.FormData = class {
-          append() {}
-        };
-      },
-      // The file input only exists once the tab has rendered.
-      afterMount(window) {
-        Object.defineProperty(window.document.getElementById("kFile"), "files", {
-          value: [{ name: "board3.png" }],
-        });
+      fetch: async () => {
+        throw new Error("Killer solve must not touch the network");
       },
     });
-    ui.fire(ui.inPanel("#kFile"), "change");
+    ui.window.PuzzleShell.get("killer").acceptShared(
+      new ui.window.File([], "board3.png", { type: "image/png" }),
+      {
+        board: BOARD,
+        unsure: [],
+        fully_caged: true,
+        checksum_ok: true,
+        sum_total: 405,
+        needs_review: false,
+      },
+    );
     await ui.flush();
     ui.fire(ui.inPanel("#kSolve"), "click");
   });
 
-  it("fills every cell, without a further network request", () => {
+  it("fills every cell, without touching the network", () => {
     assert.equal(ui.inPanel("#kResult").textContent, "Solved.");
     assert.ok(shownValues().every((v) => v >= 1 && v <= 9));
-    assert.deepEqual(calls, ["/killer/parse"], "solving must not touch the network");
   });
 
   it("satisfies every cage sum", () => {

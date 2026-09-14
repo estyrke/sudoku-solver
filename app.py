@@ -9,11 +9,12 @@ solving and the mistake audit live in ``web/sudoku/`` and ``web/queens/`` — so
 nothing here answers for them. What is left is screenshot reading
 (``/killer/parse``, ``/share/parse``, ``/confirm``).
 
-``/parse`` is still served but no longer called: the Sudoku tab reads classic
-screenshots in the page now (``web/reader/``). It stays until the Killer reader
-and the share dispatcher follow it into the browser and this app is deleted
-whole, rather than being removed a route at a time — and the reader behind it
-is not dead either way, since ``/share/parse`` falls back to it.
+``/parse`` and ``/killer/parse`` are still served but no longer called: the
+Sudoku and Killer tabs both read screenshots in the page now (``web/reader/``).
+They stay until the share dispatcher follows them into the browser and this
+app is deleted whole, rather than being removed a route at a time — and the
+readers behind them are not dead either way, since ``/share/parse`` falls back
+to both.
 
 The CV reader is imported lazily so the logic + UI work even before OpenCV (and the
 reader module) are available.
@@ -164,7 +165,9 @@ def _read_killer(raw: bytes) -> dict:
 
 @app.post("/killer/parse")
 async def killer_parse_endpoint(image: UploadFile = File(...)) -> dict:
-    """Read a Killer board from a Puzzle Page screenshot."""
+    """Read a Killer board from a Puzzle Page screenshot.
+
+    The Killer tab doesn't call this any more — see the module docstring."""
     return _read_killer(await image.read())
 
 

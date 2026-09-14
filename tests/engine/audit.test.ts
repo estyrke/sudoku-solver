@@ -2,10 +2,11 @@
 // Ported assertion-for-assertion from tests/test_audit.py.
 //
 // The Python original read its board from a screenshot through the CV reader.
-// The reader is still Python and still server-side, so what comes across here is
-// its output: tests/fixtures/killer_boards/*.json holds a real read of the same
-// screenshot, and tests/test_reader.py pins the reader to it, so the two halves
-// cannot drift apart without a test saying so.
+// The audit engine has no business reading screenshots itself, so what comes
+// across here is the reader's output: tests/fixtures/killer_boards/*.json
+// holds a real read of the same screenshot, pinned against both readers (see
+// tests/test_reader.py and tests/reader/killer-board.test.ts), so the two
+// halves cannot drift apart without a test saying so.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

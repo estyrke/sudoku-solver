@@ -87,6 +87,18 @@ export function cropPixels(pixels: Pixels, x: number, y: number, width: number, 
   return { width, height, data: out };
 }
 
+/** The rectangle `[y, y + height) x [x, x + width)` of `gray`, copied. Killer's
+ *  cage-sum crop is cut from a whole-board ink mask this way, the same shape
+ *  as `cropPixels` cuts a cell out of a whole-board RGBA image. */
+export function cropGray(gray: Gray, x: number, y: number, width: number, height: number): Gray {
+  const out = new Uint8Array(width * height);
+  for (let row = 0; row < height; row++) {
+    const from = (y + row) * gray.width + x;
+    out.set(gray.data.subarray(from, from + width), row * width);
+  }
+  return { width, height, data: out };
+}
+
 /**
  * Python's `round`, which breaks a tie towards the even number rather than
  * away from zero — `round(2.5)` is 2, not 3.
