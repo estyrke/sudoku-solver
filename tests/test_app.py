@@ -1,4 +1,10 @@
-"""The web layer: PWA plumbing and the share target's server half."""
+"""The web layer: PWA plumbing, and the readers behind the share dispatcher.
+
+The dispatch itself runs in the page now (``web/reader/share-dispatch.ts``,
+tested in ``tests/reader/share-dispatch.test.ts``). ``/share/parse`` is still
+served and still reads, and the tests below still hold the Python readers to
+the boards they produce for a shared screenshot, until the whole app goes.
+"""
 
 import json
 from pathlib import Path
@@ -62,20 +68,11 @@ def test_service_worker_is_served_from_the_root():
     assert "javascript" in res.headers["content-type"]
 
 
-def test_share_target_and_endpoint_agree_on_the_field_name():
-    # The manifest names the form field, Chrome posts under it, sw.js reads it
-    # back and /share/parse expects it. Four places, one string.
-    share_target = _manifest()["share_target"]
-    assert share_target["action"] == "/share"
-    assert share_target["method"].upper() == "POST"
-    assert share_target["enctype"] == "multipart/form-data"
-
-    (field,) = share_target["params"]["files"]
-    assert field["name"] == "image"
-    assert "image/png" in field["accept"], "Android screenshots are PNGs"
-
-    worker = (Path(__file__).parent.parent / "static" / "sw.js").read_text()
-    assert f'get("{field["name"]}")' in worker
+# The manifest, Chrome and sw.js have to agree on the form field name, and that
+# assertion used to live here — /share/parse was the fourth place that had to
+# agree. The page reads the stashed file rather than a form field now, so the
+# agreement no longer involves this app at all and is asserted in
+# tests/ui/share-target.test.js, which outlives it.
 
 
 def test_a_share_that_the_worker_missed_still_lands_on_the_app():

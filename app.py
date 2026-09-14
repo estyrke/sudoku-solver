@@ -6,15 +6,15 @@ Run with::
 
 Every puzzle reasons entirely in the browser — board models, techniques, hints,
 solving and the mistake audit live in ``web/sudoku/`` and ``web/queens/`` — so
-nothing here answers for them. What is left is screenshot reading
-(``/killer/parse``, ``/share/parse``, ``/confirm``).
+nothing here answers for them. So does every screenshot path: the Sudoku and
+Killer tabs read in the page (``web/reader/``), and so does the Android share
+target, which now works out which of the two a shared picture is without
+asking (``web/reader/share-dispatch.ts``). What is left that anything calls is
+the classifier's learning step, ``/confirm``.
 
-``/parse`` and ``/killer/parse`` are still served but no longer called: the
-Sudoku and Killer tabs both read screenshots in the page now (``web/reader/``).
-They stay until the share dispatcher follows them into the browser and this
-app is deleted whole, rather than being removed a route at a time — and the
-readers behind them are not dead either way, since ``/share/parse`` falls back
-to both.
+``/parse``, ``/killer/parse`` and ``/share/parse`` are still served but no
+longer called. They stay until this app is deleted whole, rather than being
+removed a route at a time.
 
 The CV reader is imported lazily so the logic + UI work even before OpenCV (and the
 reader module) are available.
@@ -187,6 +187,9 @@ async def share_parse_endpoint(image: UploadFile = File(...)) -> dict:
     something has to choose. Cage outlines are the tell, and counting them is
     free: the Killer reader has to run first either way, and when the picture
     turns out to be a classic board its answer is simply discarded.
+
+    The page does this for itself now — see ``web/reader/share-dispatch.ts``,
+    which is this rule ported — so nothing calls this any more.
     """
     raw = await image.read()
     killer = _read_killer(raw)

@@ -1,11 +1,10 @@
-// What to say when a request to the reader fails.
+// What to say when reading a screenshot, or learning from a correction, fails.
 //
-// Hinting, solving, the mistake audit and both screenshot readers all run in
-// the browser, and the service worker precaches the shell, so the app is
-// largely usable with no network (see static/sw.js). What is left
-// server-side is the share dispatcher and the classifier's learning step —
-// /share/parse and /confirm — and they are the only things a lost connection
-// can now take away.
+// Hinting, solving, the mistake audit and every screenshot path — dropped,
+// pasted and shared alike — all run in the browser, and the service worker
+// precaches the shell, so the app is largely usable with no network (see
+// static/sw.js). What is left server-side is the classifier's learning step,
+// /confirm, and it is the only thing a lost connection can now take away.
 //
 // Offline, `fetch` rejects with a bare TypeError — "Failed to fetch" — which
 // reads like the app broke. It did not: one path is unavailable and the rest
@@ -16,8 +15,8 @@
 // jsdom page harness substitutes browser APIs per boot (tests/ui/harness.js).
 
 const OFFLINE =
-  "You're offline — reading a screenshot, and teaching the reader from your " +
-  "corrections, both need a connection. Entering a board by hand, hints and " +
+  "You're offline — teaching the reader from your corrections needs a " +
+  "connection. Reading a screenshot, entering a board by hand, hints and " +
   "solving all still work.";
 
 /**
@@ -38,6 +37,17 @@ function isNetworkFailure(err: unknown): boolean {
  *  runs in the page fails without a connection ever being involved, and still
  *  has to put something on the status line. */
 export const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+/**
+ * The status line for a screenshot the reader could not make a board of.
+ *
+ * One sentence, shared by every way a screenshot arrives — dropped, pasted or
+ * shared. A share that worded its failure differently would have the player
+ * hunting for a difference between the paths that is not there, so the wording
+ * is kept in one place rather than kept in step by hand.
+ */
+export const unreadableScreenshotMessage = (err: unknown): string =>
+  `Could not read that screenshot: ${messageOf(err)}`;
 
 /**
  * The status line for a reader request that threw.
