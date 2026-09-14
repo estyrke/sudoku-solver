@@ -130,11 +130,11 @@ export function classifyGlyph(
 
   let digit: number | null = null;
   let score = -1;
-  for (const [candidate, forDigit] of exemplars) {
-    for (const exemplar of forDigit) {
+  for (const [forDigit, shapes] of exemplars) {
+    for (const exemplar of shapes) {
       const s = ncc(norm, exemplar);
       if (s > score) {
-        digit = candidate;
+        digit = forDigit;
         score = s;
       }
     }

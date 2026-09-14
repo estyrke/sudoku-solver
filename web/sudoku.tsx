@@ -16,7 +16,7 @@ import { PencilMarks } from "./ui/PencilMarks.tsx";
 import { Numpad } from "./ui/Numpad.tsx";
 import { ModeToggle } from "./ui/ModeToggle.tsx";
 import { DropZone } from "./ui/DropZone.tsx";
-import { readingFailureMessage } from "./ui/offline.ts";
+import { messageOf, readingFailureMessage } from "./ui/offline.ts";
 import { HintPanel, NO_HINT, type HintView } from "./ui/HintPanel.tsx";
 import { onSharedReading, type SharedReading } from "./ui/shared-reading.ts";
 import { decodeImageFile } from "./reader/decode.ts";
@@ -260,7 +260,7 @@ function SudokuPanel({ active }: { active: boolean }) {
       const board = await readClassicBoard(await decodeImageFile(file));
       applyParsed({ board: board.toWire() });
     } catch (err) {
-      setDropStatus(`Could not read that screenshot: ${err instanceof Error ? err.message : err}`);
+      setDropStatus(`Could not read that screenshot: ${messageOf(err)}`);
     }
   };
 

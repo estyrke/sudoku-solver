@@ -20,7 +20,7 @@
 
 import type { OpenCVRuntime } from "../cv/runtime.ts";
 import { classifyGlyph } from "./classify.ts";
-import { MatScope, matOfGray, matOfPixels, pyRound, type Gray, type Pixels } from "./pixels.ts";
+import { MatScope, cropPixels, matOfGray, matOfPixels, pyRound, type Gray, type Pixels } from "./pixels.ts";
 
 // Size thresholds as a fraction of cell height.
 /** A component this tall (or taller) is the cell's value. */
@@ -82,12 +82,23 @@ export interface Component {
   area: number;
 }
 
+/**
+ * The cell with its border margin taken off every edge.
+ *
+ * Both the ink mask and the Given test work on this rectangle and have to
+ * agree on it exactly — the mask indexes into the saturation image pixel for
+ * pixel — so the crop is stated once rather than derived twice.
+ */
+function innerCell(cell: Pixels): Pixels {
+  const margin = pyRound(BORDER_MARGIN * cell.height);
+  return cropPixels(cell, margin, margin, cell.width - 2 * margin, cell.height - 2 * margin);
+}
+
 /** Binary ink mask (ink = 255) with the grid border cropped away. */
 export function cellInk(cv: OpenCVRuntime, cell: Pixels): Gray {
-  const margin = pyRound(BORDER_MARGIN * cell.height);
   const mats = new MatScope();
   try {
-    const inner = mats.keep(matOfPixels(cv, trim(cell, margin)));
+    const inner = mats.keep(matOfPixels(cv, innerCell(cell)));
     const gray = mats.empty(cv);
     cv.cvtColor(inner, gray, cv.COLOR_RGBA2GRAY);
     const ink = mats.empty(cv);
@@ -107,8 +118,32 @@ export function cellInk(cv: OpenCVRuntime, cell: Pixels): Gray {
   }
 }
 
-/** Every non-noise connected component of `ink`, in label order. */
-export function components(cv: OpenCVRuntime, ink: Gray): Component[] {
+/** One labelled blob, as `connectedComponentsWithStats` describes it. */
+interface Labelled {
+  label: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  area: number;
+}
+
+/**
+ * Label the blobs of `ink` and hand them to `body` along with the label image.
+ *
+ * The two callers want different things out of the same pass — one crops each
+ * blob out, the other erases some of them — but the pass itself, its stats
+ * layout and the heap memory it has to free are identical, and doing it twice
+ * in two shapes is how the two would drift apart.
+ *
+ * `labels` is only valid inside `body`: it is a view onto WebAssembly memory
+ * that is freed on the way out.
+ */
+function withLabels<T>(
+  cv: OpenCVRuntime,
+  ink: Gray,
+  body: (blobs: Labelled[], labels: Int32Array) => T,
+): T {
   const mats = new MatScope();
   try {
     const image = mats.keep(matOfGray(cv, ink));
@@ -117,28 +152,41 @@ export function components(cv: OpenCVRuntime, ink: Gray): Component[] {
     const centroids = mats.empty(cv);
     const count = cv.connectedComponentsWithStats(image, labels, stats, centroids, 8);
 
-    const out: Component[] = [];
+    const blobs: Labelled[] = [];
     // Label 0 is the background.
     for (let label = 1; label < count; label++) {
       const at = label * STAT_COLUMNS;
-      const x = stats.data32S[at + STAT_LEFT];
-      const y = stats.data32S[at + STAT_TOP];
-      const width = stats.data32S[at + STAT_WIDTH];
-      const height = stats.data32S[at + STAT_HEIGHT];
-      if (stats.data32S[at + STAT_AREA] < NOISE_MIN_AREA) continue;
-      const area = stats.data32S[at + STAT_AREA];
+      blobs.push({
+        label,
+        x: stats.data32S[at + STAT_LEFT],
+        y: stats.data32S[at + STAT_TOP],
+        width: stats.data32S[at + STAT_WIDTH],
+        height: stats.data32S[at + STAT_HEIGHT],
+        area: stats.data32S[at + STAT_AREA],
+      });
+    }
+    return body(blobs, labels.data32S);
+  } finally {
+    mats.release();
+  }
+}
+
+/** Every non-noise connected component of `ink`, in label order. */
+export function components(cv: OpenCVRuntime, ink: Gray): Component[] {
+  return withLabels(cv, ink, (blobs, labels) => {
+    const out: Component[] = [];
+    for (const { label, x, y, width, height, area } of blobs) {
+      if (area < NOISE_MIN_AREA) continue;
       const mask = new Uint8Array(width * height);
       for (let row = 0; row < height; row++) {
         for (let col = 0; col < width; col++) {
-          if (labels.data32S[(y + row) * ink.width + (x + col)] === label) mask[row * width + col] = 255;
+          if (labels[(y + row) * ink.width + (x + col)] === label) mask[row * width + col] = 255;
         }
       }
       out.push({ mask: { width, height, data: mask }, x, y, height, area });
     }
     return out;
-  } finally {
-    mats.release();
-  }
+  });
 }
 
 /**
@@ -220,32 +268,17 @@ export function positionalMarks(cv: OpenCVRuntime, ink: Gray, band: MarkBand = W
 export function withoutHairlines(cv: OpenCVRuntime, ink: Gray): Gray {
   const floor = Math.max(2, pyRound(MARK_MIN_THICK * ink.height));
   const out = Uint8Array.from(ink.data);
-  const mats = new MatScope();
-  try {
-    const image = mats.keep(matOfGray(cv, ink));
-    const labels = mats.empty(cv);
-    const stats = mats.empty(cv);
-    const centroids = mats.empty(cv);
-    const count = cv.connectedComponentsWithStats(image, labels, stats, centroids, 8);
-
-    for (let label = 1; label < count; label++) {
-      const at = label * STAT_COLUMNS;
-      const x = stats.data32S[at + STAT_LEFT];
-      const y = stats.data32S[at + STAT_TOP];
-      const width = stats.data32S[at + STAT_WIDTH];
-      const height = stats.data32S[at + STAT_HEIGHT];
-      const area = stats.data32S[at + STAT_AREA];
+  withLabels(cv, ink, (blobs, labels) => {
+    for (const { label, x, y, width, height, area } of blobs) {
       if (Math.min(width, height) >= floor && area >= NOISE_MIN_AREA) continue;
       for (let row = y; row < y + height; row++) {
         for (let col = x; col < x + width; col++) {
-          if (labels.data32S[row * ink.width + col] === label) out[row * ink.width + col] = 0;
+          if (labels[row * ink.width + col] === label) out[row * ink.width + col] = 0;
         }
       }
     }
-    return { width: ink.width, height: ink.height, data: out };
-  } finally {
-    mats.release();
-  }
+  });
+  return { width: ink.width, height: ink.height, data: out };
 }
 
 function emptyRead(): CellRead {
@@ -266,10 +299,9 @@ function largestTallerThan(comps: Component[], minHeight: number): Component | n
 
 /** Heuristic: a black glyph is a Given; a tinted one was entered by the player. */
 function isGiven(cv: OpenCVRuntime, cell: Pixels, ink: Gray): boolean {
-  const margin = pyRound(BORDER_MARGIN * cell.height);
   const mats = new MatScope();
   try {
-    const inner = mats.keep(matOfPixels(cv, trim(cell, margin)));
+    const inner = mats.keep(matOfPixels(cv, innerCell(cell)));
     const rgb = mats.empty(cv);
     cv.cvtColor(inner, rgb, cv.COLOR_RGBA2RGB);
     const hsv = mats.empty(cv);
@@ -292,15 +324,3 @@ function isGiven(cv: OpenCVRuntime, cell: Pixels, ink: Gray): boolean {
 }
 
 const clamp = (value: number, limit: number): number => Math.min(Math.max(value, 0), limit);
-
-/** `cell` with `margin` pixels taken off every edge. */
-function trim(cell: Pixels, margin: number): Pixels {
-  const width = cell.width - 2 * margin;
-  const height = cell.height - 2 * margin;
-  const data = new Uint8Array(width * height * 4);
-  for (let row = 0; row < height; row++) {
-    const from = ((margin + row) * cell.width + margin) * 4;
-    data.set(cell.data.subarray(from, from + width * 4), row * width * 4);
-  }
-  return { width, height, data };
-}

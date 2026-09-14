@@ -47,14 +47,18 @@ async function pasteOffline(tab, { onLine = false, fetch } = {}) {
 const statusOf = (ui, id) => ui.document.getElementById(id);
 
 describe("reading a screenshot offline", () => {
-  it("never asks the network to read a classic screenshot", async () => {
-    // The whole point of the port: the screenshot stays on the device. jsdom
-    // has no image decoder, so the read cannot finish here — but where it
-    // stops is itself the assertion, because a reader that still uploaded
-    // would have made its request long before it needed to decode anything.
+  it("never uploads a classic screenshot", async () => {
+    // The whole point of the port: the screenshot stays on the device. The
+    // upload was the first thing the old path did — before decoding, before
+    // anything — so its absence here is the assertion, and it is the one this
+    // test can actually make: jsdom has no image decoder, so the read stops at
+    // `decodeImageFile` and never reaches the reader's own assets (the OpenCV
+    // runtime and the digit exemplars, fetched once on a first real read and
+    // deliberately not precached — see static/sw.js). Those are not on trial
+    // here; uploading the player's screenshot is.
     const ui = await pasteOffline("sudoku");
 
-    assert.deepEqual(ui.calls, [], "reading a screenshot must not touch the network");
+    assert.deepEqual(ui.calls, [], "reading a screenshot must not upload it");
   });
 
   it("does not blame the connection when the Sudoku reader fails", async () => {
