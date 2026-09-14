@@ -1,10 +1,14 @@
 // Installability and the receiving half of the Android share target.
 //
 // sw.js takes the POSTed screenshot, stashes it and redirects here with
-// ?shared=1. This file collects it, asks the server which puzzle it is, brings
-// that tab to the front and hands the reading over. From the tab's point of
-// view nothing unusual happened: it gets the same payload it would have got
+// ?shared=1. This file collects it, reads it here in the page, brings the tab
+// it belongs to to the front and hands the reading over. From the tab's point
+// of view nothing unusual happened: it gets the same payload it would have got
 // from a dropped file.
+//
+// Reading and the choice of reader both happen on the device — the screenshot
+// is never uploaded, and nothing about the share path needs a connection.
+// Which puzzle a picture is lives in web/reader/share-dispatch.ts.
 //
 // Both entry points below are called by app.tsx once the tabs are mounted,
 // rather than run on import: a share that arrives before the tab it belongs to
@@ -19,7 +23,9 @@
 // substitute them per boot — see tests/ui/harness.js.
 
 import { setShareStatus, type SharedReading } from "./ui/shared-reading.ts";
-import { readingFailureMessage } from "./ui/offline.ts";
+import { messageOf, unreadableScreenshotMessage } from "./ui/offline.ts";
+import { decodeImageFile } from "./reader/decode.ts";
+import { readSharedScreenshot, type DispatchedReading } from "./reader/share-dispatch.ts";
 
 const SHARE_CACHE = "shared-image";
 const SHARE_KEY = "/shared-image";
@@ -52,6 +58,7 @@ export async function adoptSharedImage(): Promise<void> {
     return;
   }
 
+  let file: File;
   try {
     const cache = await window.caches.open(SHARE_CACHE);
     const stashed = await cache.match(SHARE_KEY);
@@ -64,28 +71,41 @@ export async function adoptSharedImage(): Promise<void> {
     await cache.delete(SHARE_KEY);
 
     const blob = await stashed.blob();
-    const file = new window.File([blob], "shared-screenshot.png", {
+    file = new window.File([blob], "shared-screenshot.png", {
       type: blob.type || "image/png",
     });
-
-    say("Reading the shared screenshot…");
-    const body = new window.FormData();
-    body.append("image", file);
-    const res = await window.fetch("/share/parse", { method: "POST", body });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      say(data.detail || `Could not read that screenshot (${res.status}).`, true);
-      return;
-    }
-
-    const puzzle = window.PuzzleShell.get(data.kind);
-    if (!puzzle || !puzzle.acceptShared) {
-      say(`Nothing here can open a ${data.kind} board.`, true);
-      return;
-    }
-    window.PuzzleShell.activate(data.kind);
-    puzzle.acceptShared(file, data as SharedReading);
   } catch (err) {
-    say(readingFailureMessage(err, "Could not open the shared screenshot"), true);
+    say(`Could not open the shared screenshot: ${messageOf(err)}`, true);
+    return;
   }
+
+  // From here on this is an ordinary read of an ordinary file, and it fails in
+  // the ordinary words — a screenshot the reader cannot make a board of says
+  // the same thing whether it was shared, dropped or pasted.
+  try {
+    say("Reading the shared screenshot…");
+    handToTab(await readSharedScreenshot(await decodeImageFile(file)), file);
+  } catch (err) {
+    say(unreadableScreenshotMessage(err), true);
+  }
+}
+
+/**
+ * Bring the tab a reading belongs to to the front, and hand it over.
+ *
+ * Its own function because this is the only place the reader's answer becomes a
+ * tab, and it is the one step of the share path that cannot run under jsdom as
+ * part of a whole share — the read before it needs an image decoder and the
+ * OpenCV runtime, and jsdom has neither. Exported so the link between the two
+ * halves is tested for what it is (tests/share/), rather than left as the seam
+ * every suite happens to step over.
+ */
+export function handToTab(reading: DispatchedReading, file: File): void {
+  const puzzle = window.PuzzleShell.get(reading.kind);
+  if (!puzzle || !puzzle.acceptShared) {
+    setShareStatus(`Nothing here can open a ${reading.kind} board.`, true);
+    return;
+  }
+  window.PuzzleShell.activate(reading.kind);
+  puzzle.acceptShared(file, reading as SharedReading);
 }

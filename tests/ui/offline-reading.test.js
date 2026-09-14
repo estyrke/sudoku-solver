@@ -4,11 +4,10 @@
 // lose for either: these tests pin that, by booting with a `fetch` that
 // records every call and asserting the reading path never reaches it.
 //
-// The share dispatcher is still server-side, and that is what keeps the last
-// test in this file: offline that request cannot run, and `fetch` rejects
-// with a bare "Failed to fetch" that reads like a crash. The honest version
-// says the connection is the problem, and says that the rest of the app still
-// works.
+// The share path reads on the device too now (web/reader/share-dispatch.ts),
+// so the last test in this file has turned around: a shared screenshot that
+// arrives on a phone with no signal must not blame the connection either,
+// because the connection has nothing to do with it.
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
@@ -95,14 +94,16 @@ describe("reading a screenshot offline", () => {
     assert.doesNotMatch(status.textContent, /Failed to fetch/);
   });
 
-  it("says it about a shared screenshot too", async () => {
-    // A share arrives while the app is open; the phone can be offline by then.
-    // The share dispatcher is still server-side, so this one is still a lost
-    // connection rather than a reader failure.
+  it("never uploads a shared screenshot either", async () => {
+    // A share arrives while the app is open; the phone can be offline by then,
+    // and that must not matter: the reader and the choice of reader both run
+    // here, so nothing about the share path asks the network for anything.
+    const calls = [];
     const ui = await boot({
       activate: null,
       url: "http://localhost/?shared=1",
-      fetch: async () => {
+      fetch: async (url) => {
+        calls.push(url);
         throw new TypeError("Failed to fetch");
       },
       setUp(window) {
@@ -116,6 +117,10 @@ describe("reading a screenshot offline", () => {
     await ui.flush();
     await ui.flush();
 
-    assert.match(statusOf(ui, "kDropStatus").textContent, /offline|connection/i);
+    assert.deepEqual(calls, [], "sharing a screenshot must not upload it");
+    const status = statusOf(ui, "kDropStatus");
+    assert.match(status.textContent, /could not read/i);
+    assert.doesNotMatch(status.textContent, /offline/i);
+    assert.doesNotMatch(status.textContent, /Failed to fetch/);
   });
 });
