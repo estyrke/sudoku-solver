@@ -109,6 +109,7 @@ FIXTURE2 = Path(__file__).parent / "fixtures" / "puzzle_page_killer_board2.png"
 FIXTURE3 = Path(__file__).parent / "fixtures" / "puzzle_page_killer_board3.png"
 FIXTURE4 = Path(__file__).parent / "fixtures" / "puzzle_page_killer_board4.png"
 FIXTURE5 = Path(__file__).parent / "fixtures" / "puzzle_page_killer_board5.png"
+FIXTURE6 = Path(__file__).parent / "fixtures" / "puzzle_page_killer_board6.png"
 # The same boards, as the reader read them, for the TypeScript engine tests to
 # solve without needing OpenCV.
 BOARDS = Path(__file__).parent / "fixtures" / "killer_boards"
@@ -204,9 +205,9 @@ def test_killer_reader_produces_a_usable_board():
 
 
 def test_killer_reader_checksum_is_clean_on_every_reference_board():
-    """All four reference screenshots read exactly, so the 9x45 checksum passes
+    """Every reference screenshot reads exactly, so the 9x45 checksum passes
     and nothing is flagged for review."""
-    for path in (FIXTURE, FIXTURE2, FIXTURE3, FIXTURE4, FIXTURE5):
+    for path in (FIXTURE, FIXTURE2, FIXTURE3, FIXTURE4, FIXTURE5, FIXTURE6):
         read = read_killer_board(cv2.imread(str(path)), seeded_store())
         assert read.board.is_fully_caged(), path.name
         assert read.sum_total == 405, f"{path.name}: {read.sum_total}"
@@ -266,7 +267,7 @@ def test_every_reference_board_matches_its_committed_read():
     alters a digit or a cage sum fails here rather than silently leaving the
     engine's fixtures describing a board nobody reads any more.
     """
-    for path in (FIXTURE, FIXTURE2, FIXTURE3, FIXTURE4, FIXTURE5):
+    for path in (FIXTURE, FIXTURE2, FIXTURE3, FIXTURE4, FIXTURE5, FIXTURE6):
         board = read_killer_board(cv2.imread(str(path)), seeded_store()).board
         committed = json.loads((BOARDS / f"{path.stem}.json").read_text())
         assert board.to_dict() == committed, (
@@ -328,6 +329,24 @@ def test_killer_reader_handles_a_fifth_board_layout():
         (2,7):12,(3,0):22,(3,4):11,(4,2):15,(4,5):6,(4,6):12,(4,8):24,(5,0):15,
         (5,2):16,(5,4):10,(5,7):10,(6,1):6,(6,5):13,(7,1):14,(7,2):12,(7,3):14,
         (7,4):11,(7,5):21,(7,7):11,
+    }
+
+
+def test_killer_reader_handles_a_sixth_board_layout():
+    """A sixth cage layout, 30 cages, every sum exact. Three digits placed and the
+    player's own pencil marks everywhere else. This is the board that lifted the
+    cell-count cap off the 45-rule's set analysis (tests/engine/techniques.test.ts):
+    every technique in the catalogue stalled on it from the first hint, the cap
+    being all that hid the five outies of rows 7-9 owing 34 between them."""
+    read = read_killer_board(cv2.imread(str(FIXTURE6)), seeded_store())
+    assert len(read.board.cages) == 30
+    assert sum(len(c.cells) for c in read.board.cages) == 81
+    got = {min(c.cells): c.sum for c in read.board.cages}
+    assert got == {
+        (0,0):10,(0,2):8,(0,3):23,(0,6):18,(0,7):10,(1,0):9,(1,3):22,(1,4):15,
+        (1,7):13,(1,8):4,(2,0):11,(2,1):12,(3,5):12,(3,6):24,(4,0):11,(4,2):9,
+        (4,4):4,(4,6):7,(4,8):14,(5,0):14,(5,1):15,(5,2):13,(5,3):15,(5,5):10,
+        (6,4):33,(6,6):8,(6,8):11,(7,0):24,(7,6):8,(8,6):18,
     }
 
 
