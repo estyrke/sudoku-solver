@@ -244,12 +244,22 @@ class KillerRead:
         )
 
 
-def read_killer_board(img_bgr: np.ndarray) -> KillerRead:
-    """Read a screenshot into a caged board."""
+def read_killer_board(
+    img_bgr: np.ndarray, store: TemplateStore | None = None
+) -> KillerRead:
+    """Read a screenshot into a caged board.
+
+    ``store`` classifies the placed digits and Pencil marks, defaulting — as
+    :func:`~sudoku.reader.read_board.read_board` does — to whatever ``/confirm``
+    has learned on this machine. The tests pass the shipped exemplars instead, so
+    that what they pin is the reader rather than the developer's own corrections.
+    Cage sums are read through :func:`sum_store` either way: they are printed by
+    the app in one fixed face, and nothing teaches them.
+    """
     board_img = _warp_board(img_bgr)
     coloured = _ink_colour(board_img)
     labels = _label_cages(coloured)
-    digit_store = loaded_store()
+    digit_store = loaded_store() if store is None else store
     sums = sum_store()
 
     cells: list[Cell] = []
