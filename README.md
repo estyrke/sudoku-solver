@@ -108,9 +108,10 @@ switch only flips `hidden`, so a board survives being switched away from — whi
 is also why a tab checks whether it is in front before claiming a keystroke.
 
 ### Hint techniques (simplest → hardest)
-Naked single → hidden single → naked pair/triple → hidden pair → naked quad →
-hidden triple → pointing pair/triple → box/line reduction → cage pointing (Killer) →
-X-Wing.
+Impossible pencil mark → naked single → hidden single → cage sum (Killer) →
+45-rule (Killer) → naked pair/triple → hidden pair → naked quad → hidden triple →
+pointing pair/triple → box/line reduction → cage pointing (Killer) → X-Wing →
+45-rule over a set of innies or outies (Killer).
 The engine reasons over a working candidate grid seeded from your pencil marks (falling
 back to derived candidates), so elimination steps persist and later singles unlock.
 
