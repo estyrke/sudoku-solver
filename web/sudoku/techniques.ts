@@ -527,9 +527,12 @@ function orList(nums: number[]): string {
   return `${nums.slice(0, -1).join(", ")} or ${nums[nums.length - 1]}`;
 }
 
-/** How many ways a group can make its total: `2 ways`, `17 ways`. */
-function waysPhrase(n: number): string {
-  return n === 1 ? "1 way" : `${n} ways`;
+/** How many ways a group can make its total, as a clause the explanations open a
+ * sentence with: `There are 17 ways`, `There is only 1 way`. The whole clause
+ * rather than the count, because the singular needs a different verb — and one
+ * way is worth saying out loud, being the strongest this argument ever gets. */
+function waysClause(n: number): string {
+  return n === 1 ? "There is only 1 way" : `There are ${n} ways`;
 }
 
 /**
@@ -710,7 +713,7 @@ export function cageSum(board: Board, cg: CandGrid): Hint | null {
           units: [cageLabel(cage)],
           explanation:
             `${cageLabel(cage)} needs ${remaining} more across ` +
-            `${cellsPhrase(open.length)}. There are ${waysPhrase(combos.length)} to do that, ` +
+            `${cellsPhrase(open.length)}. ${waysClause(combos.length)} to do that, ` +
             `and not one of them puts ${orList(gone)} in ${cellName(...cell)}.`,
         };
       }
@@ -967,8 +970,13 @@ export function fortyFiveRule(board: Board, cg: CandGrid): Hint | null {
 // Killer Sudoku: the 45-rule over several cells at once
 // ---------------------------------------------------------------------------
 
-// Beyond four the total says almost nothing: the reachable range is nearly the
-// whole of 1-9 for every cell, so the bound never bites and the work is wasted.
+// How many empty cells a leftover may have before the *bound* stops being worth
+// computing. Beyond four the total says almost nothing to it: the reachable
+// range is nearly the whole of 1-9 for every cell, so the bound never bites and
+// the work is wasted.
+//
+// It caps the bound only. Enumerating a group's workable sets is a different
+// argument and does not go slack with size — see `fortyFiveSets`.
 //
 // Counted over the leftover cells still *empty*, not the whole leftover. It is
 // the unknowns that make the arithmetic go slack, and a five-cell leftover with
@@ -1035,7 +1043,6 @@ function* leftoverGroups(board: Board, cg: CandGrid): Generator<LeftoverGroup> {
       const open = empties(group, cg);
       // A cell that is neither empty-with-candidates nor filled.
       if (open.length + filled.length !== cells.size) continue;
-      if (open.length > MAX_LEFTOVER) continue;
       yield {
         label,
         kind,
@@ -1093,6 +1100,7 @@ export function fortyFiveSets(board: Board, cg: CandGrid): Hint | null {
 
     // Without distinctness the bound below would be unsound.
     if (!allDistinct(open)) continue;
+    if (open.length > MAX_LEFTOVER) continue;
     for (const cell of open) {
       const squeezed = squeezedOut(cell, open, cg, remaining);
       if (squeezed === null) continue;
@@ -1117,17 +1125,39 @@ export function fortyFiveSets(board: Board, cg: CandGrid): Hint | null {
   // sets catches digits that sit comfortably inside its min-max range and are
   // still impossible — the bound sums digits from anywhere in the group, so it
   // admits totals no real assignment reaches.
-  for (const { label, kind, where, total, group, open, filled, owed, remaining } of leftoverGroups(
-    board,
-    cg,
-  )) {
+  //
+  // Deliberately not capped by cell count the way the bound is. What decides
+  // whether this argument bites is how near the total sits to the edge of what
+  // the group can reach, not how many cells it spans: five cells owing 34 have
+  // exactly one workable set, which is the sharpest this rule ever gets, while
+  // three cells owing 15 have a dozen and say almost nothing. Capping at four
+  // cells threw the first away to avoid the second. The board that prompted this
+  // was left with no technique at all by it: cages reaching up out of rows 7-9
+  // leave five outies owing 34, so all five are {4,6,7,8,9} and the 5s come out.
+  //
+  // It costs little to lift, because enumerating is bounded work at any size —
+  // a group of k empty cells has at most C(9,k) sets to consider, which peaks at
+  // 126 and *falls* as k grows past four.
+  const analysed: [LeftoverGroup, CageOptions][] = [];
+  for (const leftover of leftoverGroups(board, cg)) {
     // Distinctness for the same reason as above: the sets are of distinct digits.
-    if (open.length < 2 || !allDistinct(open)) continue;
+    if (leftover.open.length < 2 || !allDistinct(leftover.open)) continue;
     // Only the empty cells are passed, so the group's own filled digits stay in
     // the pool. They are already gone from any candidate set that shares a unit
     // with them, and where they don't share one they may legitimately repeat.
-    const options = groupOptions(board, cg, open, remaining);
-    if (options === null) continue;
+    const options = groupOptions(board, cg, leftover.open, leftover.remaining);
+    if (options !== null) analysed.push([leftover, options]);
+  }
+  // Fewest sets to check first, then fewest cells — `cageSum`'s own rule, and
+  // what stands in for the cap: the shortest argument wins, so a five-cell group
+  // with one set is offered ahead of a three-cell group with twelve rather than
+  // being silenced on a count that never measured sharpness in the first place.
+  analysed.sort(
+    ([a, x], [b, y]) => x.combos.length - y.combos.length || a.open.length - b.open.length,
+  );
+
+  for (const [leftover, options] of analysed) {
+    const { label, kind, where, total, group, open, filled, owed, remaining } = leftover;
     for (const cell of open) {
       const mine = options.allowed.get(idx(cell[0], cell[1]))!;
       const gone = sortNums([...cand(cg, cell)].filter((d) => !mine.has(d)));
@@ -1143,7 +1173,7 @@ export function fortyFiveSets(board: Board, cg: CandGrid): Hint | null {
           `${label} must total ${total}, which leaves ` +
           `${names(group)} ${where} to make ${owed}` +
           (filled.length > 0 ? ` — ${remaining} once the filled ones are taken off` : "") +
-          `. There are ${waysPhrase(options.combos.length)} to do that, and not one of them ` +
+          `. ${waysClause(options.combos.length)} to do that, and not one of them ` +
           `puts ${orList(gone)} in ${cellName(...cell)}.`,
       };
     }

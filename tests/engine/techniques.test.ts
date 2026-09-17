@@ -944,6 +944,29 @@ describe("45-rule over several cells", () => {
     assert.match(hint.explanation, /17 once the filled ones are taken off/);
   });
 
+  it("enumerates a leftover wider than the bound may look at", () => {
+    // Cages covering four of row 1 and totalling 11 leave five cells owing 34,
+    // and {4,6,7,8,9} is the only five distinct digits that make it. The bound
+    // is capped at four cells and would in any case only reach as far as "at
+    // least 4"; the 5 takes enumerating, which is why the cap belongs to the
+    // bound alone and not to the walk that follows it.
+    const board = new Board(undefined, [
+      new Cage([[0, 0], [0, 1]], 3),
+      new Cage([[0, 2], [0, 3]], 8),
+    ]);
+    const cg = cgOf(board);
+    const group: Coord[] = [[0, 4], [0, 5], [0, 6], [0, 7], [0, 8]];
+    assert.ok(group.length > T.MAX_LEFTOVER, "wider than the bound is allowed to look at");
+    assert.deepEqual(T.squeezedOut(group[0], group, cg, 34)?.[0], [1, 2, 3], "the bound's reach");
+
+    const hint = T.fortyFiveSets(board, cg);
+    assert.ok(hint);
+    assert.equal(hint.technique, "45-rule (innie set)");
+    assert.deepEqual(hint.cells, [[0, 4]]);
+    assert.deepEqual(hint.digits, [1, 2, 3, 5]);
+    assert.match(hint.explanation, /There is only 1 way to do that/);
+  });
+
   it("needs the leftovers to share a unit", () => {
     // The bound sums *distinct* digits. Cells that may repeat could total less
     // than it assumes, so the elimination would be unsound and is not offered.
@@ -1079,14 +1102,59 @@ describe("a board that needs cage pointing", () => {
   });
 
   it("needs cagePointing itself to get past the first hint", () => {
+    // Everything simpler than it stalls, so cagePointing is what opens the board
+    // and what `findHint` offers. Only the simpler ones: `fortyFiveSets` also has
+    // something to say about this position now that it is no longer capped by
+    // cell count, but it sits deliberately last in the catalogue, and a harder
+    // technique reaching the same board by a longer road is no argument for
+    // dropping the one a player would actually see.
     const board = fixture("puzzle_page_killer_board5");
-    const withoutCagePointing = T.TECHNIQUES.filter((t) => t.name !== "cagePointing");
+    const simpler = T.TECHNIQUES.slice(0, T.TECHNIQUES.findIndex((t) => t.name === "cagePointing"));
+    assert.ok(simpler.length > 0);
     const stalled = workingCandidates(board);
-    const hint = withoutCagePointing.reduce<T.Hint | null>(
-      (found, t) => found ?? t(board, stalled),
-      null,
-    );
-    assert.equal(hint, null, "expected every other technique to stall on the first hint");
+    const hint = simpler.reduce<T.Hint | null>((found, t) => found ?? t(board, stalled), null);
+    assert.equal(hint, null, "expected every simpler technique to stall on the first hint");
     assert.equal(findHint(board, workingCandidates(board))?.technique, "Cage pointing");
+  });
+});
+
+describe("a board that needs a wide 45-rule leftover", () => {
+  // board6 is a real Killer read with three digits placed and the player's own
+  // pencil marks everywhere else. Every technique in the catalogue stalled on
+  // it from the very first hint — not because any of them was missing, but
+  // because the one that had the answer was switched off: five outies of rows
+  // 7-9 owe 34 between them, which only {4,6,7,8,9} makes, and the cap on how
+  // many cells a leftover could have kept `fortyFiveSets` from ever looking.
+  it("solves board6 without the backtracker", () => {
+    const board = fixture("puzzle_page_killer_board6");
+    assert.equal(board.toWire().cells.filter((c) => c.value !== null).length, 3);
+
+    const run = solveWithTechniques(board, workingCandidates(board));
+    assert.ok(run.solved, `stalled with ${run.steps.length} steps taken`);
+    assert.ok(run.board.isValid());
+  });
+
+  it("agrees with the one solution the board has", () => {
+    const board = fixture("puzzle_page_killer_board6");
+    const searched = solve(board);
+    assert.ok(searched);
+
+    const run = solveWithTechniques(board, workingCandidates(board));
+    const digits = (b: Board) => b.toWire().cells.map((c) => c.value);
+    assert.deepEqual(digits(run.board), digits(searched));
+  });
+
+  it("opens on the leftover the cell cap used to hide", () => {
+    const board = fixture("puzzle_page_killer_board6");
+    const others = T.TECHNIQUES.filter((t) => t.name !== "fortyFiveSets");
+    const stalled = workingCandidates(board);
+    const hint = others.reduce<T.Hint | null>((found, t) => found ?? t(board, stalled), null);
+    assert.equal(hint, null, "expected every other technique to stall on the first hint");
+
+    const first = findHint(board, workingCandidates(board));
+    assert.equal(first?.technique, "45-rule (outie set)");
+    assert.match(first.explanation, /r6c1, r6c2, r6c3, r6c4, r6c6 spilling out of rows 7-9/);
+    assert.match(first.explanation, /There is only 1 way to do that/);
+    assert.deepEqual(first.digits, [5]);
   });
 });
