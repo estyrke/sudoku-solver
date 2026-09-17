@@ -77,6 +77,7 @@ const REFERENCE = [
   "puzzle_page_killer_board3",
   "puzzle_page_killer_board4",
   "puzzle_page_killer_board5",
+  "puzzle_page_killer_board6",
 ];
 
 const fixture = (name: string): Board =>

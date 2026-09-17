@@ -36,7 +36,8 @@ const BOARD2 = "puzzle_page_killer_board2";
 const BOARD3 = "puzzle_page_killer_board3";
 const BOARD4 = "puzzle_page_killer_board4";
 const BOARD5 = "puzzle_page_killer_board5";
-const REFERENCE = [SAMPLE, BOARD2, BOARD3, BOARD4, BOARD5];
+const BOARD6 = "puzzle_page_killer_board6";
+const REFERENCE = [SAMPLE, BOARD2, BOARD3, BOARD4, BOARD5, BOARD6];
 
 /** Every fixture, read once — many tests ask about the same board. */
 const reading = new Map<string, Promise<KillerRead>>();
@@ -248,6 +249,25 @@ test("a fifth board layout, #5284, 27 cages, every sum exact", async () => {
       "2,7": 12, "3,0": 22, "3,4": 11, "4,2": 15, "4,5": 6, "4,6": 12, "4,8": 24, "5,0": 15,
       "5,2": 16, "5,4": 10, "5,7": 10, "6,1": 6, "6,5": 13, "7,1": 14, "7,2": 12, "7,3": 14,
       "7,4": 11, "7,5": 21, "7,7": 11,
+    },
+  );
+});
+
+test("a sixth cage layout, 30 cages, every sum exact", async () => {
+  // This is the board that lifted the cell-count cap off the 45-rule's set
+  // analysis (tests/engine/techniques.test.ts): every technique in the
+  // catalogue stalled on it from the first hint, the cap being all that hid
+  // the five outies of rows 7-9 owing 34 between them.
+  const { board } = await readFixture(BOARD6);
+  assert.equal(board.cages.length, 30);
+  assert.equal(board.cages.reduce((n, c) => n + c.cells.length, 0), 81);
+  assert.deepEqual(
+    sumsByAnchor(board),
+    {
+      "0,0": 10, "0,2": 8, "0,3": 23, "0,6": 18, "0,7": 10, "1,0": 9, "1,3": 22, "1,4": 15,
+      "1,7": 13, "1,8": 4, "2,0": 11, "2,1": 12, "3,5": 12, "3,6": 24, "4,0": 11, "4,2": 9,
+      "4,4": 4, "4,6": 7, "4,8": 14, "5,0": 14, "5,1": 15, "5,2": 13, "5,3": 15, "5,5": 10,
+      "6,4": 33, "6,6": 8, "6,8": 11, "7,0": 24, "7,6": 8, "8,6": 18,
     },
   );
 });
