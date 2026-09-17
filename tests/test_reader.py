@@ -47,13 +47,13 @@ def classic_board() -> np.ndarray:
 def seeded_store() -> TemplateStore:
     """The shipped exemplars and nothing else.
 
-    ``read_board``'s default store is ``loaded_store()``, which first picks up
-    whatever ``/confirm`` has learned into ``templates/<digit>/`` — a directory
-    that is git-ignored and therefore different on every machine. Reading
-    through it would make these tests, and the pinned board they compare
-    against, say something about the developer's own screenshots rather than
-    about the reader. The browser reader has no such store to pick up, so this
-    is also the only store the two can be held to the same board through.
+    Both readers default to ``loaded_store()``, which first picks up whatever
+    ``/confirm`` has learned into ``templates/<digit>/`` — a directory that is
+    git-ignored and therefore different on every machine. Reading through it
+    would make these tests, and the pinned boards they compare against, say
+    something about the developer's own screenshots rather than about the
+    reader. The browser reader has no such store to pick up, so this is also the
+    only store the two can be held to the same board through.
     """
     return ensure_seed(TemplateStore())
 
@@ -136,7 +136,7 @@ def test_positional_marks_maps_onto_a_shifted_band():
 def _killer_fixture_read():
     img = cv2.imread(str(FIXTURE))
     assert img is not None, "fixture screenshot missing"
-    return read_killer_board(img)
+    return read_killer_board(img, seeded_store())
 
 
 def test_killer_reader_recovers_the_cage_layout():
@@ -207,7 +207,7 @@ def test_killer_reader_checksum_is_clean_on_every_reference_board():
     """All four reference screenshots read exactly, so the 9x45 checksum passes
     and nothing is flagged for review."""
     for path in (FIXTURE, FIXTURE2, FIXTURE3, FIXTURE4, FIXTURE5):
-        read = read_killer_board(cv2.imread(str(path)))
+        read = read_killer_board(cv2.imread(str(path)), seeded_store())
         assert read.board.is_fully_caged(), path.name
         assert read.sum_total == 405, f"{path.name}: {read.sum_total}"
         assert read.checksum_ok and not read.needs_review, path.name
@@ -216,7 +216,7 @@ def test_killer_reader_checksum_is_clean_on_every_reference_board():
 def test_killer_reader_handles_a_second_board_layout():
     """A different cage layout entirely — 25 cages rather than 29 — so the
     outline segmentation isn't just fitting the one board."""
-    read = read_killer_board(cv2.imread(str(FIXTURE2)))
+    read = read_killer_board(cv2.imread(str(FIXTURE2)), seeded_store())
     assert len(read.board.cages) == 25
     assert sum(len(c.cells) for c in read.board.cages) == 81
     got = {min(c.cells): c.sum for c in read.board.cages}
@@ -232,7 +232,7 @@ def test_cage_outline_is_not_read_as_a_leading_one():
     """Regression: a cage's left outline clipped into the sum crop as a 1px-wide
     sliver, which passed the size filters and — being a tall thin stroke —
     classified as a 1, turning r8c1's 9 into a 19."""
-    read = read_killer_board(cv2.imread(str(FIXTURE2)))
+    read = read_killer_board(cv2.imread(str(FIXTURE2)), seeded_store())
     by_anchor = {min(c.cells): c.sum for c in read.board.cages}
     assert by_anchor[(7, 0)] == 9, "leading-1 sliver is back"
 
@@ -267,7 +267,7 @@ def test_every_reference_board_matches_its_committed_read():
     engine's fixtures describing a board nobody reads any more.
     """
     for path in (FIXTURE, FIXTURE2, FIXTURE3, FIXTURE4, FIXTURE5):
-        board = read_killer_board(cv2.imread(str(path))).board
+        board = read_killer_board(cv2.imread(str(path)), seeded_store()).board
         committed = json.loads((BOARDS / f"{path.stem}.json").read_text())
         assert board.to_dict() == committed, (
             f"{path.name} no longer reads as tests/fixtures/killer_boards has it; "
@@ -277,7 +277,7 @@ def test_every_reference_board_matches_its_committed_read():
 
 def test_killer_reader_handles_a_third_board_layout():
     """A third cage layout, 28 cages, every sum exact."""
-    read = read_killer_board(cv2.imread(str(FIXTURE3)))
+    read = read_killer_board(cv2.imread(str(FIXTURE3)), seeded_store())
     assert len(read.board.cages) == 28
     assert sum(len(c.cells) for c in read.board.cages) == 81
     got = {min(c.cells): c.sum for c in read.board.cages}
@@ -294,7 +294,7 @@ def test_killer_reader_reads_the_apps_italic_one():
     a stroke leaning right off a short flag — is structurally a 7. Against upright
     Hershey exemplars the 7 won by 0.615 to 0.603 and two of these three read as
     7s. Slanted copies of every exemplar settle it."""
-    board = read_killer_board(cv2.imread(str(FIXTURE3))).board
+    board = read_killer_board(cv2.imread(str(FIXTURE3)), seeded_store()).board
     ones = [(r, c) for r in range(9) for c in range(9) if board.value(r, c) == 1]
     assert ones == [(6, 7), (7, 0), (8, 3)], f"expected three 1s, got {ones}"
     assert not any(board.value(r, c) == 7 for r in range(9) for c in range(9))
@@ -302,7 +302,7 @@ def test_killer_reader_reads_the_apps_italic_one():
 
 def test_killer_reader_handles_a_fourth_board_layout():
     """Board #5241, 29 cages, every sum exact."""
-    read = read_killer_board(cv2.imread(str(FIXTURE4)))
+    read = read_killer_board(cv2.imread(str(FIXTURE4)), seeded_store())
     assert len(read.board.cages) == 29
     assert sum(len(c.cells) for c in read.board.cages) == 81
     got = {min(c.cells): c.sum for c in read.board.cages}
@@ -319,7 +319,7 @@ def test_killer_reader_handles_a_fifth_board_layout():
     `cagePointing` in the TypeScript catalogue (tests/engine/techniques.test.ts):
     the classic and prior Killer techniques alone stall on it from the first
     hint, even though it has a unique solution."""
-    read = read_killer_board(cv2.imread(str(FIXTURE5)))
+    read = read_killer_board(cv2.imread(str(FIXTURE5)), seeded_store())
     assert len(read.board.cages) == 27
     assert sum(len(c.cells) for c in read.board.cages) == 81
     got = {min(c.cells): c.sum for c in read.board.cages}
@@ -337,7 +337,7 @@ def test_killer_reader_does_not_confuse_the_apps_six_for_a_five():
     Hershey 6 (0.845 to 0.834) -- the r8c7 16-cage of board #5241 misread as 15,
     a mistake dishonest enough to look like a genuine player error rather than a
     parse fault."""
-    read = read_killer_board(cv2.imread(str(FIXTURE4)))
+    read = read_killer_board(cv2.imread(str(FIXTURE4)), seeded_store())
     by_anchor = {min(c.cells): c.sum for c in read.board.cages}
     assert by_anchor[(7, 6)] == 16, "5/6 confusion is back"
 
@@ -345,7 +345,7 @@ def test_killer_reader_does_not_confuse_the_apps_six_for_a_five():
 def test_killer_reader_reads_every_placed_digit_of_the_third_board():
     """The whole pen grid, exactly — the digit counts the app prints under its
     keypad (three 1s, three 2s, one 3, two 4s, ...) add up to these thirteen."""
-    board = read_killer_board(cv2.imread(str(FIXTURE3))).board
+    board = read_killer_board(cv2.imread(str(FIXTURE3)), seeded_store()).board
     placed = {
         (r, c): board.value(r, c)
         for r in range(9)
@@ -364,10 +364,10 @@ def test_board_frame_is_not_read_as_pencil_marks():
     border crop and survived it as a full-width, one-pixel-tall hairline. Spread
     across the three bottom sub-cells it cleared the ink threshold on its own,
     inventing marks the player never wrote."""
-    assert read_killer_board(cv2.imread(str(FIXTURE3))).board.cell(8, 8).pencil_marks == {5, 8}
-    assert read_killer_board(cv2.imread(str(FIXTURE2))).board.cell(8, 8).pencil_marks == {
-        1, 2, 3, 4, 5, 6, 7, 9
-    }
+    third = read_killer_board(cv2.imread(str(FIXTURE3)), seeded_store()).board
+    second = read_killer_board(cv2.imread(str(FIXTURE2)), seeded_store()).board
+    assert third.cell(8, 8).pencil_marks == {5, 8}
+    assert second.cell(8, 8).pencil_marks == {1, 2, 3, 4, 5, 6, 7, 9}
 
 
 def test_positional_marks_ignores_a_hairline():
