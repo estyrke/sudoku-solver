@@ -11,15 +11,25 @@ no API key, and no server — the screenshot is never uploaded anywhere.
 
 ```bash
 npm ci
-npm run build   # web/ -> static/dist/app.js
-npm run dev     # serves the site at http://localhost:8124
+npm run build   # web/ -> static/dist/app.js  (not committed; build it first)
+npm run dev     # live dev server at http://localhost:8124
 ```
 
-The app is static files; `npm run dev` is a static server that applies the same four
-root-path mappings the host applies in production, which is what an installable
-manifest and a root-scoped service worker need (see `vercel.json`, and `hostRewrites`
-in `vite.config.ts`). It serves the *built* bundle, so re-run `npm run build` — or
-leave `npm run build -- --watch` going beside it — after changing anything in `web/`.
+The app is static files. All three local commands put the same four URLs at the root —
+`/`, `/share`, `/manifest.webmanifest` and `/sw.js` — because an installable manifest
+and a root-scoped service worker need them there, and they read those mappings out of
+`vercel.json` so that local and deployed are the same site:
+
+| | |
+| --- | --- |
+| `npm run build` | `web/` → `static/dist/app.js`. Add `-- --watch` to rebuild as you edit |
+| `npm run dev` | Vite's dev server: what you want while working on `web/` |
+| `npm run serve` | the built files, served exactly as the host serves them |
+
+`dev` transforms everything it serves, so the bundle it hands you is not the bundle
+that ships and `/sw.js` is not the bytes a browser would register as a worker. Use
+`serve` for anything about the real bundle, the service worker, the offline precache
+or installing the app.
 
 ## Using it
 
@@ -72,7 +82,7 @@ still works; only sharing is missing. See
 | Browser engine | `web/queens/` | the Queens board model (variable N, irregular Regions), its technique catalogue, `findHint` and the backtracking `solve` — a separate engine sharing no code with `web/sudoku/`, see `docs/adr/0001-sudoku-and-queens-as-separate-contexts.md` |
 | PWA shell | `static/manifest.webmanifest`, `static/sw.js`, `web/pwa.ts` | installability, the Android share target, and the offline precache of the shell + engine bundle |
 | OpenCV runtime | `static/vendor/opencv/`, `web/cv/runtime.ts`, `tools/opencv/` | a custom OpenCV.js build — core and imgproc only — committed as an artifact, and the loader that brings it up in the browser or Node. What the reader runs on. See `docs/opencv-js-build.md` |
-| Hosting | `vercel.json`, `.vercelignore` | the app deploys as static files, with no build step at deploy time. Four URLs — `/`, `/share`, `/manifest.webmanifest` and `/sw.js` — are mapped onto files under `static/`, which is what a root-scoped service worker and an installable manifest require |
+| Hosting | `vercel.json`, `.vercelignore` | the app deploys as static files, built on deploy by `npm run build`. Four URLs — `/`, `/share`, `/manifest.webmanifest` and `/sw.js` — are mapped onto files under `static/`, which is what a root-scoped service worker and an installable manifest require. Because the bundle is built there rather than committed, the build's inputs (`web/`, `package.json`, the Vite config) are part of the deploy too |
 
 There is no server and no runtime Python. What is left of Python is a tooling island
 under `tools/`, for work that genuinely happens offline: icons are drawn by
@@ -96,8 +106,12 @@ npm run build       # web/app.tsx -> static/dist/app.js
 npm run typecheck   # tsc --noEmit
 ```
 
-`static/dist/` is committed, because the deploy serves the repo as it stands and has no
-build step; CI rebuilds and fails if the committed bundle has drifted from the sources.
+`static/dist/` is gitignored: the bundle is built, not committed. Vercel runs
+`npm run build` on deploy, and CI runs it before the suites that import the bundle, so
+the same command produces it everywhere and nothing has to be kept in step by hand.
+A fresh clone has no bundle until you build one — which is why `npm run build` is the
+second line of the quick-start and a prerequisite of `tests/ui/`.
+
 The output is minified for asset size and cacheability only — not as obfuscation or a
 security measure, since minified JavaScript is trivially readable.
 

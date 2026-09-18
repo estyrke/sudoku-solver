@@ -75,17 +75,11 @@ jobs:
         run: npm test
         working-directory: tests/components
 
+      # static/dist is not committed — the deploy runs this same command
+      # (vercel.json) — so this step is both the check that the sources still
+      # build and the only way the page suite below has a bundle to import.
       - name: Build the bundle
         run: npm run build
-      # static/dist is committed because the deploy has no Node step: what is in
-      # the repo is what gets served (vercel.json skips the build outright). A
-      # build that changes it means the sources moved on without it.
-      - name: The committed bundle matches the sources
-        # --porcelain as well as diff: a build that emits a file name nobody has
-        # committed yet is untracked, and `git diff` would not see it.
-        run: |
-          git diff --exit-code -- static/dist
-          test -z "$(git status --porcelain -- static/dist)"
 
       # The page under jsdom, driven with real events. Needs the build above:
       # it imports the shipped bundle.

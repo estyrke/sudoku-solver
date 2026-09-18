@@ -6,3 +6,7 @@ __pycache__/
 node_modules/
 .vercel
 .env*
+
+# The front-end bundle is built, not committed: Vercel runs `npm run build` on
+# deploy (vercel.json) and CI builds before the suites that import it.
+static/dist/
