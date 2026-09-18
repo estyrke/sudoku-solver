@@ -1,10 +1,11 @@
-// The classic reader, end to end, against the board the Python reader produces.
+// The classic reader, end to end, against the board the Python reader produced.
 //
 // This is the parity gate. The fixture is committed pixels and the read beside
-// it is committed JSON, written by tools/reader/render_classic_fixture.py from
-// the Python reader — so this asserts the ported pipeline agrees with the one
-// it was ported from, cell by cell, rather than merely agreeing with itself.
-// tests/test_reader.py holds the Python half to the same two files.
+// it is committed JSON — the board the Python reader made of those pixels,
+// pinned before that reader was deleted (ADR 0006) — so this asserts the ported
+// pipeline agrees with the one it was ported from, cell by cell, rather than
+// merely agreeing with itself. Both files are frozen artifacts now; see
+// docs/reader-assets.md before changing either.
 //
 // Everything here runs against the same committed OpenCV.js artifact the
 // browser loads, and the fixture is decoded by the small PNG decoder next
@@ -35,14 +36,14 @@ function readFixture(): Promise<Board> {
   return reading;
 }
 
-test("the synthetic board reads exactly as the Python reader reads it", async () => {
+test("the synthetic board reads exactly as the Python reader read it", async () => {
   const board = await readFixture();
   const pinned = JSON.parse(await readFile(PINNED, "utf8"));
 
   // Every value, every Given flag, every Pencil mark and every confidence
   // flag, in one comparison: a port that got 80 of 81 cells right is not a
-  // port. Regenerate the pinned file only when the Python reader's own read
-  // has changed and that change is the correct one.
+  // port. Regenerating the pinned file to make this pass is how a parity gate
+  // stops being one — after that it says nothing about the port at all.
   assert.deepEqual(board.toWire(), pinned);
 });
 

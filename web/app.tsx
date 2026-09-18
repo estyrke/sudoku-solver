@@ -63,7 +63,7 @@ options.requestAnimationFrame = (run) => run();
 export interface PuzzleShellApi {
   register(puzzleType: PuzzleType): void;
   activate(id: string): void;
-  get(id: string): (PuzzleType & { acceptShared?: (file: File, data: SharedReading) => void }) | null;
+  get(id: string): (PuzzleType & { acceptShared?: (data: SharedReading) => void }) | null;
 }
 
 declare global {
@@ -88,7 +88,7 @@ window.PuzzleShell = {
     return {
       ...puzzle,
       acceptShared: puzzle.acceptsShared
-        ? (file, data) => deliverSharedReading(id, file, data)
+        ? (data) => deliverSharedReading(id, data)
         : undefined,
     };
   },

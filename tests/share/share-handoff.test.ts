@@ -46,7 +46,7 @@ const CLASSIC_READING = { kind: "sudoku", board: { cells: cells() } } as Dispatc
  */
 function shell({ accepting = ["sudoku", "killer", "queens"] } = {}) {
   const activated: string[] = [];
-  const delivered: { id: string; file: File; reading: unknown }[] = [];
+  const delivered: { id: string; reading: unknown }[] = [];
 
   (globalThis as Record<string, any>).window = {
     PuzzleShell: {
@@ -56,7 +56,7 @@ function shell({ accepting = ["sudoku", "killer", "queens"] } = {}) {
           ? {
               id,
               acceptShared: accepting.includes(id)
-                ? (file: File, reading: unknown) => delivered.push({ id, file, reading })
+                ? (reading: unknown) => delivered.push({ id, reading })
                 : undefined,
             }
           : null,
@@ -72,14 +72,10 @@ function status() {
   return said;
 }
 
-const FILE = new File([new Uint8Array([137, 80, 78, 71])], "shared-screenshot.png", {
-  type: "image/png",
-});
-
 test("a Killer reading brings the Killer tab to the front and lands there", () => {
   const { activated, delivered } = shell();
 
-  handToTab(KILLER_READING, FILE);
+  handToTab(KILLER_READING);
 
   assert.deepEqual(activated, ["killer"]);
   assert.equal(delivered.length, 1);
@@ -90,22 +86,11 @@ test("a Killer reading brings the Killer tab to the front and lands there", () =
 test("a classic reading goes to the Sudoku tab instead", () => {
   const { activated, delivered } = shell();
 
-  handToTab(CLASSIC_READING, FILE);
+  handToTab(CLASSIC_READING);
 
   assert.deepEqual(activated, ["sudoku"]);
   assert.equal(delivered.length, 1);
   assert.equal(delivered[0].id, "sudoku");
-});
-
-test("the tab is handed the original file, not only the reading", () => {
-  // "Confirm reading" teaches the digit recognizer by re-extracting glyphs from
-  // the image, so a shared board that arrived without its file would silently
-  // lose the ability to learn from corrections.
-  const { delivered } = shell();
-
-  handToTab(KILLER_READING, FILE);
-
-  assert.equal(delivered[0].file, FILE);
 });
 
 test("a reading no tab can open says so rather than vanishing", () => {
@@ -115,7 +100,7 @@ test("a reading no tab can open says so rather than vanishing", () => {
   const { activated, delivered } = shell({ accepting: [] });
   const said = status();
 
-  handToTab({ kind: "queens" } as unknown as DispatchedReading, FILE);
+  handToTab({ kind: "queens" } as unknown as DispatchedReading);
 
   assert.deepEqual(activated, [], "no tab is brought forward for a reading it cannot take");
   assert.deepEqual(delivered, []);

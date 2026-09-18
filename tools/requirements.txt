@@ -1,0 +1,14 @@
+# The Python tooling island. Nothing here ships and nothing here runs at
+# request time: the app is static files and every puzzle is reasoned about in
+# the browser. What is left is work that genuinely happens offline — drawing
+# the app icons today, and the model training pipeline that replaces template
+# matching next.
+#
+#     python3 -m venv .venv && source .venv/bin/activate
+#     pip install -r tools/requirements.txt
+#     python -m tools.make_icons
+#
+# OpenCV is here for its drawing primitives, not for reading anything: the
+# screenshot reader runs on OpenCV.js in the browser (docs/opencv-js-build.md).
+numpy>=1.26
+opencv-python-headless>=4.9

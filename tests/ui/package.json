@@ -2,7 +2,7 @@
   "name": "sudoku-solver-ui-tests",
   "version": "0.0.0",
   "private": true,
-  "description": "Headless jsdom tests for the browser modules in static/. Node-only island in an otherwise Python project; nothing here ships.",
+  "description": "The installed app as it is actually served: the page driven headlessly through jsdom against the shipped bundle, sw.js run outside a browser in a vm sandbox, and the host configuration that maps four URLs onto files under static/. Nothing here ships.",
   "scripts": {
     "test": "node --test"
   },

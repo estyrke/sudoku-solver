@@ -18,7 +18,7 @@
  */
 export type SharedReading = Record<string, any>;
 
-type ReadingHandler = (file: File, data: SharedReading) => void;
+type ReadingHandler = (data: SharedReading) => void;
 
 const handlers = new Map<string, ReadingHandler>();
 
@@ -30,13 +30,17 @@ export function onSharedReading(id: string, handler: ReadingHandler): () => void
   };
 }
 
-/** Hand a parsed reading to the tab it belongs to. */
-export function deliverSharedReading(
-  id: string,
-  file: File,
-  data: SharedReading,
-): void {
-  handlers.get(id)?.(file, data);
+/**
+ * Hand a parsed reading to the tab it belongs to.
+ *
+ * The reading travels alone. The screenshot used to travel with it, because
+ * "Confirm reading" re-extracted glyphs from the original image to teach the
+ * classifier; with that loop deleted nothing downstream of the reader has any
+ * use for the pixels, and a tab that was handed them would only be holding a
+ * screenshot's worth of memory for nothing.
+ */
+export function deliverSharedReading(id: string, data: SharedReading): void {
+  handlers.get(id)?.(data);
 }
 
 // ---- the share's own progress line ---------------------------------------

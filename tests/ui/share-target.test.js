@@ -84,13 +84,9 @@ async function share(state, { stashed = true } = {}) {
  */
 async function deliver(kind, reading) {
   const ui = await boot({ activate: null });
-  const { window } = ui;
-  const file = new window.File([new Uint8Array([137, 80, 78, 71])], "shared-screenshot.png", {
-    type: "image/png",
-  });
 
-  window.PuzzleShell.activate(kind);
-  window.PuzzleShell.get(kind).acceptShared(file, reading);
+  ui.window.PuzzleShell.activate(kind);
+  ui.window.PuzzleShell.get(kind).acceptShared(reading);
   await ui.flush();
   return ui;
 }

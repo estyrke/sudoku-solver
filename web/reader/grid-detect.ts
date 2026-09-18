@@ -1,10 +1,10 @@
 // Locate the 9x9 grid in an image and split it into 81 cell crops.
 //
-// A port of sudoku/reader/grid_detect.py. Two paths: if a strong 4-corner quad
-// is found (a photo, or a screenshot with margins around the board) it is
-// perspective-warped to a square; otherwise the image is assumed to be the
-// board already and simply resized. Either way the output is 81 cell images in
-// row-major order.
+// A port of the deleted Python reader's sudoku/reader/grid_detect.py (ADR
+// 0006). Two paths: if a strong 4-corner quad is found (a photo, or a
+// screenshot with margins around the board) it is perspective-warped to a
+// square; otherwise the image is assumed to be the board already and simply
+// resized. Either way the output is 81 cell images in row-major order.
 
 import type { OpenCVMat, OpenCVRuntime } from "../cv/runtime.ts";
 import { MatScope, cropPixels, matOfPixels, pixelsOfMat, type Pixels } from "./pixels.ts";

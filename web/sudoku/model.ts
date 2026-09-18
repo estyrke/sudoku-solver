@@ -129,7 +129,7 @@ function isContiguous(indices: ReadonlySet<number>): boolean {
  * A Killer cage: 2+ orthogonally-contiguous cells whose digits are distinct and
  * total `sum`.
  *
- * Not a Unit — a cage need not contain every digit 1-9. See `sudoku/CONTEXT.md`.
+ * Not a Unit — a cage need not contain every digit 1-9. See `web/sudoku/CONTEXT.md`.
  *
  * `cells` is row-major sorted, so `cells[0]` is the anchor the UI prints the sum
  * in — Python's `min(cage.cells)`. `indices` is the same set keyed by row-major
@@ -301,7 +301,7 @@ export class Board {
    * The cells (by index) whose values constrain `(r, c)`: the classic 20
    * sharing a row, column or box, plus its cage-mates. An instance method, not
    * a static one, because cage membership is per-board data — see
-   * `sudoku/CONTEXT.md`, *Peer*.
+   * `web/sudoku/CONTEXT.md`, *Peer*.
    */
   peers(r: number, c: number): Set<number> {
     const result = new Set<number>();

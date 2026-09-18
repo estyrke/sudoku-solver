@@ -3,9 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "TypeScript front end for the puzzle helper. Vite compiles web/*.ts into static/dist/, which is what index.html loads and what the jsdom page tests import.",
+  "description": "The puzzle helper. Vite compiles web/*.ts into static/dist/, which is what index.html loads and what the jsdom page tests import; the app ships as the static files in static/ and there is no server.",
   "scripts": {
     "build": "vite build",
+    "dev": "vite --port 8124 --strictPort",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

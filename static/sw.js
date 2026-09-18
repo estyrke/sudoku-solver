@@ -74,8 +74,8 @@ self.addEventListener("fetch", (event) => {
   }
   const key = shellKey(request, url);
   if (key) event.respondWith(serveFromCache(event, key));
-  // Everything else — the reader endpoints above all — falls through to the
-  // network untouched.
+  // Everything else — the reader's own assets above all — falls through to the
+  // network untouched, and to the ordinary HTTP cache behind it.
 });
 
 // --- offline shell ---------------------------------------------------------

@@ -1,0 +1,9 @@
+{
+  "name": "sudoku-solver-shell-tests",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The installable shell, as opposed to the page inside it: sw.js run outside a browser in a vm sandbox, and the host configuration that serves the worker and the manifest from the root. Kept apart from tests/ui because neither of these boots a page — they need no jsdom and no dependencies at all — and because a failing service worker and a page that discards what the engine said are different failures that should read differently in CI.",
+  "scripts": {
+    "test": "node --test"
+  }
+}

@@ -1,13 +1,11 @@
 // Classic Sudoku tab: editable board, manual entry, screenshot import, hints
 // and solving.
 //
-// Hinting, solving and now reading all run in the page (web/sudoku/*.ts and
-// web/reader/). The only thing left here that talks to the server is teaching
-// the digit recognizer from a confirmed reading.
+// Hinting, solving and reading all run in the page (web/sudoku/*.ts and
+// web/reader/), and nothing here talks to a server — there is none.
 //
-// Browser APIs are reached through `window` (`window.fetch`, `window.FormData`,
-// …) rather than as bare globals, so the jsdom page harness can substitute them
-// per boot — see tests/ui/harness.js.
+// Browser APIs are reached through `window` rather than as bare globals, so the
+// jsdom page harness can substitute them per boot — see tests/ui/harness.js.
 
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import type { PuzzleType } from "./app.tsx";
@@ -16,7 +14,7 @@ import { PencilMarks } from "./ui/PencilMarks.tsx";
 import { Numpad } from "./ui/Numpad.tsx";
 import { ModeToggle } from "./ui/ModeToggle.tsx";
 import { DropZone } from "./ui/DropZone.tsx";
-import { readingFailureMessage, unreadableScreenshotMessage } from "./ui/offline.ts";
+import { unreadableScreenshotMessage } from "./ui/read-failure.ts";
 import { HintPanel, NO_HINT, type HintView } from "./ui/HintPanel.tsx";
 import { onSharedReading, type SharedReading } from "./ui/shared-reading.ts";
 import { decodeImageFile } from "./reader/decode.ts";
@@ -85,8 +83,6 @@ function SudokuPanel({ active }: { active: boolean }) {
   const [hint, setHint] = useState<HintView>(NO_HINT);
   const [result, setResult] = useState<string | null>(null);
   const [dropStatus, setDropStatus] = useState("");
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [canConfirm, setCanConfirm] = useState(false);
   const boardRef = useRef<HTMLElement | null>(null);
 
   const clearHint = useCallback(() => {
@@ -235,7 +231,6 @@ function SudokuPanel({ active }: { active: boolean }) {
   const applyParsed = (data: { board: { cells: WireCell[] } }) => {
     setCells(fromWire(data.board.cells));
     clearHint();
-    setCanConfirm(true);
     const low = data.board.cells.filter((c) => c.low_confidence).length;
     setDropStatus(
       low
@@ -253,8 +248,6 @@ function SudokuPanel({ active }: { active: boolean }) {
    * runtime and the digit exemplars — and later ones do not.
    */
   const readImage = async (file: File) => {
-    setImageFile(file);
-    setCanConfirm(false);
     setDropStatus("Reading board…");
     try {
       const board = await readClassicBoard(await decodeImageFile(file));
@@ -264,40 +257,14 @@ function SudokuPanel({ active }: { active: boolean }) {
     }
   };
 
-  /**
-   * Adopt a screenshot the share target has already read.
-   *
-   * The file is kept, not just the reading: "Confirm reading" teaches the digit
-   * recognizer by re-extracting glyphs from the original image, so a shared
-   * board would silently lose the ability to learn from corrections without it.
-   */
+  /** Adopt a screenshot the share target has already read. */
   useEffect(
     () =>
-      onSharedReading("sudoku", (file: File, data: SharedReading) => {
-        setImageFile(file);
-        applyParsed(data as { board: { cells: WireCell[] } });
-      }),
+      onSharedReading("sudoku", (data: SharedReading) =>
+        applyParsed(data as { board: { cells: WireCell[] } }),
+      ),
     [],
   );
-
-  const confirmReading = async () => {
-    if (!imageFile) return;
-    const fd = new window.FormData();
-    fd.append("image", imageFile);
-    fd.append("board", JSON.stringify(toWire(cells)));
-    setDropStatus("Learning from your corrections…");
-    try {
-      const res = await window.fetch("/confirm", { method: "POST", body: fd });
-      const data = await res.json();
-      setDropStatus(
-        data.ok
-          ? `Thanks — learned ${data.learned} digit example(s). Future reads will improve.`
-          : data.detail || "Could not learn from this board.",
-      );
-    } catch (err) {
-      setDropStatus(readingFailureMessage(err, "Confirm failed"));
-    }
-  };
 
   // --- rendering ----------------------------------------------------------
   const [sr, sc] = rc(selected);
@@ -400,15 +367,6 @@ function SudokuPanel({ active }: { active: boolean }) {
             </button>
             <button id="solve" type="button" onClick={doSolve}>
               Solve
-            </button>
-            <button
-              id="confirmRead"
-              type="button"
-              disabled={!canConfirm}
-              title="Teach the reader from your corrections"
-              onClick={confirmReading}
-            >
-              Confirm reading
             </button>
             <button
               id="clear"

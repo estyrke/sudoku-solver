@@ -1,14 +1,14 @@
 // The digit exemplars recognition matches against.
 //
-// These are not rendered here, or anywhere at run time. They are baked into
-// static/reader/glyph-seeds.bin by tools/reader/bake_glyph_seeds.py from the
-// same bytes the Python reader ships, because text rasterisation differs across
-// platforms and classifying a ~16px glyph is sensitive enough to notice: macOS
-// and Linux once disagreed on more than half the cage sums of one screenshot.
-// Shipping the bitmaps is what makes a developer's run and a CI run the same
-// run.
+// These are not rendered here, or anywhere at run time. They are the committed
+// bitmaps in static/reader/glyph-seeds.bin, which is the source of truth for
+// them rather than a copy of one: text rasterisation differs across platforms
+// and classifying a ~16px glyph is sensitive enough to notice — macOS and Linux
+// once disagreed on more than half the cage sums of one screenshot. Shipping
+// the bitmaps is what makes a developer's run and a CI run the same run, and
+// docs/reader-assets.md is where changing one is written down.
 //
-// Format (little-endian), as written by that script:
+// Format (little-endian):
 //
 //     "GLYPHS01"      8 bytes, magic and version
 //     side            u8, the square side of every exemplar
@@ -22,7 +22,8 @@
 
 import { loadAsset } from "./asset.ts";
 
-/** Where the asset is served from. app.py mounts static/ at this prefix. */
+/** Where the asset is served from. The whole front end lives under this prefix
+ *  (see vercel.json, which maps only four URLs out of it). */
 const ASSET_PATH = "/static/reader/glyph-seeds.bin";
 
 const MAGIC = "GLYPHS01";

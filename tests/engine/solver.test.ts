@@ -65,8 +65,8 @@ test("does not mutate the board passed in", () => {
 // Killer Sudoku: the reference boards
 // ---------------------------------------------------------------------------
 
-// The screenshots tests/test_reader.py and tests/reader/killer-board.test.ts
-// both read, as the reader read them (tests/fixtures/killer_boards/*.json).
+// The screenshots tests/reader/killer-board.test.ts reads, as the reader read
+// them (tests/fixtures/killer_boards/*.json).
 // This test used to read and solve in one go; now that the read and the solve
 // each have their own budget to answer for, the read is pinned there and the
 // solve is pinned here, against the same boards — see tests/reader/

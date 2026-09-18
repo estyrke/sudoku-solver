@@ -74,10 +74,7 @@ describe("killer audit markers", () => {
   /** Hand the tab an already-read `board`, the way a shared screenshot does,
    * and let the page's own engine take it from there. */
   const load = async (board) => {
-    ui.window.PuzzleShell.get("killer").acceptShared(
-      new ui.window.File([], "board.png", { type: "image/png" }),
-      reading(board),
-    );
+    ui.window.PuzzleShell.get("killer").acceptShared(reading(board));
     await ui.flush();
     assert.equal(ui.inPanel("#kDropStatus").textContent.startsWith("Read 2"), true);
     ui.fire(ui.inPanel('[data-kmode="digits"]'), "click");
@@ -136,10 +133,7 @@ describe("killer audit markers", () => {
     // TECHNIQUES attempts — and no amount of further Killer work will change
     // that, which a fixture with cages on it could not promise.
     ui.fire(ui.inPanel('[data-kmode="cages"]'), "click");
-    ui.window.PuzzleShell.get("killer").acceptShared(
-      new ui.window.File([], "easter.png", { type: "image/png" }),
-      reading(EASTER_MONSTER),
-    );
+    ui.window.PuzzleShell.get("killer").acceptShared(reading(EASTER_MONSTER));
     await ui.flush();
     assert.match(ui.inPanel("#kDropStatus").textContent, /^Read 0 cages\./);
     ui.fire(ui.inPanel('[data-kmode="digits"]'), "click");

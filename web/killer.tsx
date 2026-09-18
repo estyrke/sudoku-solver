@@ -21,9 +21,9 @@
 // (web/reader/share-dispatch.ts). A dropped screenshot and a shared one are
 // shaped by the same `killerReading`, so they arrive here identically.
 //
-// Browser APIs are reached through `window` (`window.fetch`, `window.FormData`,
-// `window.prompt`, …) rather than as bare globals, so the jsdom page harness can
-// substitute them per boot — see tests/ui/harness.js.
+// Browser APIs are reached through `window` (`window.prompt`, …) rather than as
+// bare globals, so the jsdom page harness can substitute them per boot — see
+// tests/ui/harness.js.
 
 import { useEffect, useState } from "preact/hooks";
 import type { PuzzleType } from "./app.tsx";
@@ -32,7 +32,7 @@ import { PencilMarks } from "./ui/PencilMarks.tsx";
 import { Numpad } from "./ui/Numpad.tsx";
 import { ModeToggle } from "./ui/ModeToggle.tsx";
 import { DropZone } from "./ui/DropZone.tsx";
-import { unreadableScreenshotMessage } from "./ui/offline.ts";
+import { unreadableScreenshotMessage } from "./ui/read-failure.ts";
 import { HintPanel, NO_HINT, type HintView } from "./ui/HintPanel.tsx";
 import {
   onSharedReading,
@@ -497,9 +497,7 @@ function KillerPanel({ active }: { active: boolean }) {
   useEffect(() => onShareStatus((text, error) => setDropStatus({ text, error })), []);
   useEffect(
     () =>
-      onSharedReading("killer", (_file: File, data: SharedReading) =>
-        applyParsed(data as ParsedReading),
-      ),
+      onSharedReading("killer", (data: SharedReading) => applyParsed(data as ParsedReading)),
     [],
   );
 

@@ -18,10 +18,10 @@ it stores only what changed, not the board it changed. Undo walks the cursor bac
 applies each Edit's inverse; redo walks it forward. The history and the cursor are saved
 with the board, so undo *and* redo survive a restart.
 
-Two arguments decide the shape. The first is that persistence must not cost a backend: the
-server is stateless, every engine already runs in the page, and issue #28 is about deleting
-the Python runtime entirely — cross-device sync would need accounts, storage and a privacy
-posture, all to move a puzzle between screens. The second is arithmetic. A board serialized
+Two arguments decide the shape. The first is that persistence must not cost a backend:
+every engine and both readers run in the page and there is no server left to hold anything
+(ADR 0006) — cross-device sync would need accounts, storage and a privacy posture, all to
+move a puzzle between screens. The second is arithmetic. A board serialized
 the way `toWire()` already serializes it is ~5.7 KB, so snapshot-per-Edit would put a long
 session on three tabs near the ~5 MB `localStorage` budget; an Edit that records one cell's
 before and after is ~150 bytes. Deltas are what make persisting the *whole* history
@@ -76,12 +76,13 @@ app has been closed.
   That is not a locking scheme and does not pretend to be — it targets the one failure
   that actually happens, a stale background window autosaving over the session just
   played. Concurrent editing in two windows still resolves to whoever wrote last.
-- **The screenshot is not kept, but the doubt is.** A session stores no image, so
-  `Confirm reading` is unavailable after a reload and the recognizer can only be taught
-  from a reading in the same sitting. Sudoku's per-cell `low_confidence` and Killer's
-  doubtful cage sums *are* stored: they cost almost nothing, and a restored board that
-  still holds possibly-misread digits while no longer showing which ones to check would be
-  quietly less trustworthy than the one that was saved.
+- **The screenshot is not kept, but the doubt is.** A session stores no image, and nothing
+  wants one: the reader takes pixels and returns a board, and `Confirm reading` — the only
+  thing that ever needed the original back — went with the Python runtime (ADR 0006).
+  Sudoku's per-cell `low_confidence` and Killer's doubtful cage sums *are* stored: they
+  cost almost nothing, and a restored board that still holds possibly-misread digits while
+  no longer showing which ones to check would be quietly less trustworthy than the one that
+  was saved.
 - **A finished puzzle stays the session**, history and all, so a solved board is there when
   the player comes back and `Solve` remains undoable after a restart. Nothing special-cases
   completion.
