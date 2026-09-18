@@ -1,19 +1,27 @@
 # What the deploy is allowed to contain.
 #
-# The output directory is the repo root (see vercel.json), so every source
-# file, test fixture screenshot and doc would otherwise be published alongside
-# the app and served at its own URL. An allowlist rather than a list of
-# exclusions, in the form Vercel documents: a directory added later should have
-# to be let in deliberately, not be published because nobody remembered to name
-# it here.
+# An allowlist rather than a list of exclusions, in the form Vercel documents:
+# a directory added later should have to be let in deliberately, not be
+# published because nobody remembered to name it here. The output directory is
+# the repo root (see vercel.json), so everything below is both uploaded and
+# reachable at its own URL.
 #
-# `static/` is the whole app — the page, its stylesheet, the built bundle, the
+# Two groups. `static/` is the app itself — the page, its stylesheet, the
 # icons, the manifest, the service worker, the OpenCV build and the digit
-# exemplars — and vercel.json is what maps four of those onto root URLs.
+# exemplars — and vercel.json maps four of those onto root URLs. The rest are
+# the build's *inputs*: the bundle is no longer committed, so the deploy runs
+# `npm run build`, and a deploy without `package.json` or `web/` is a deploy
+# that cannot build. That is the trade for not committing build output — the
+# TypeScript sources ship alongside the app. They are already public, so this
+# is deploy size and tidiness, not secrecy.
 #
-# This is tidiness and deploy size, not secrecy. The repo is public and holds
-# no secrets, which is just as well: nothing here is *verified* by a test, and
-# it is the one piece of the deploy that only the deploy can prove.
+# `node_modules` is excluded by the wildcard and should be: Vercel installs it
+# during the build rather than taking a copy of one machine's.
 /*
 !/static
+!/web
+!/package.json
+!/package-lock.json
+!/tsconfig.json
+!/vite.config.ts
 !/vercel.json

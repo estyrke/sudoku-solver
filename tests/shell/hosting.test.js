@@ -56,13 +56,29 @@ function headersFor(url) {
 const exists = (relative) => fs.existsSync(path.join(ROOT, relative));
 
 describe("static hosting", () => {
-  it("serves the repo as it stands, with no build step", () => {
-    // static/dist/app.js is committed precisely because the deploy has no Node
-    // step — CI rebuilds and fails if the committed bundle has drifted. A build
-    // command here would make that check meaningless and the deploy's contents
-    // something other than what was reviewed.
-    assert.equal(config.buildCommand, "", "an empty build command is what skips the build");
+  it("builds the bundle on deploy rather than serving a committed one", () => {
+    // static/dist/ is gitignored, so the deploy has to produce it. An empty
+    // build command here — which is how a Vercel deploy skips building — would
+    // ship an app whose one script tag 404s, and nothing else in this repo
+    // would notice: every other suite builds for itself first.
+    assert.equal(config.buildCommand, "npm run build");
     assert.equal(config.outputDirectory, ".");
+  });
+
+  it("lets the build's own inputs into the deploy", () => {
+    // The flip side of not committing the bundle: `npm run build` has to run
+    // where the sources are, so the .vercelignore allowlist must admit them.
+    // Dropping one would break the deploy and only the deploy.
+    const allowed = new Set(
+      read(".vercelignore")
+        .split("\n")
+        .filter((line) => line.startsWith("!"))
+        .map((line) => line.slice(1).replace(/^\//, "")),
+    );
+
+    for (const input of ["web", "package.json", "package-lock.json", "vite.config.ts", "static"]) {
+      assert.ok(allowed.has(input), `${input} is needed to build and is not allowed in`);
+    }
   });
 
   it("serves the app at the root", () => {
