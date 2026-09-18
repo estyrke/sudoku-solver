@@ -57,7 +57,7 @@ describe("reading a screenshot offline", () => {
     // test can actually make: jsdom has no image decoder, so the read stops at
     // `decodeImageFile` and never reaches the reader's own assets (the OpenCV
     // runtime and the digit exemplars, fetched once on a first real read and
-    // deliberately not precached — see static/sw.js). Those are not on trial
+    // deliberately not precached — see public/sw.js). Those are not on trial
     // here; uploading the player's screenshot is.
     const ui = await pasteOffline("sudoku");
 

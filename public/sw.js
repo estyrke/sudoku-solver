@@ -13,7 +13,7 @@
 //
 // **Offline hinting.** Every puzzle is reasoned about in the browser now: the
 // board models, the technique catalogues, hinting, solving and the mistake
-// audit all live inside static/dist/app.js. Nothing about answering a board
+// audit all live inside the one bundle at /assets/app.js. Nothing about a board
 // needs the server, so the only thing standing between the player and an
 // offline hint is loading the page. Precaching the shell on install removes it,
 // and from the first launch rather than only after a lucky online visit. What
@@ -25,10 +25,10 @@
 // request at all. Nothing here has to keep a route off the cache for the sake
 // of one.
 //
-// The reader's own assets — the OpenCV runtime under /static/vendor/opencv/ and
-// the digit exemplars under /static/reader/ — are not precached: they are
-// several megabytes that only a player who reads a screenshot ever needs, so
-// they are left to the ordinary HTTP cache for now.
+// The reader's own assets — the OpenCV runtime under /vendor/opencv/ and the
+// digit exemplars under /reader/ — are not precached: they are several
+// megabytes that only a player who reads a screenshot ever needs, so they are
+// left to the ordinary HTTP cache for now.
 
 const SHARE_CACHE = "shared-image";
 const SHARE_KEY = "/shared-image";
@@ -44,12 +44,17 @@ const SHARE_KEY = "/shared-image";
 // activates, so the previous deploy does not linger in the player's storage.
 const SHELL_CACHE = "app-shell-v1";
 
-// The app shell and the engine. `/` rather than `/static/index.html` because
-// that is what a navigation asks for and what the cache is then keyed by.
+// The app shell and the engine. `/` rather than `/index.html` because that is
+// what a navigation asks for and what the cache is then keyed by.
+//
+// Every name here is fixed rather than content-hashed, which is a constraint
+// this list places on the build rather than a coincidence: a bundle named by
+// its own hash could not be precached without the worker being told the name
+// somehow. See the comment on `entryFileNames` in vite.config.ts.
 const SHELL_ASSETS = [
   "/",
-  "/static/dist/app.js",
-  "/static/style.css",
+  "/assets/app.js",
+  "/style.css",
   "/manifest.webmanifest",
 ];
 

@@ -1,24 +1,18 @@
-# What the deploy is allowed to contain.
+# What gets uploaded for the deploy to build from.
 #
 # An allowlist rather than a list of exclusions, in the form Vercel documents:
 # a directory added later should have to be let in deliberately, not be
-# published because nobody remembered to name it here. The output directory is
-# the repo root (see vercel.json), so everything below is both uploaded and
-# reachable at its own URL.
+# uploaded because nobody remembered to name it here.
 #
-# Two groups. `static/` is the app itself — the page, its stylesheet, the
-# icons, the manifest, the service worker, the OpenCV build and the digit
-# exemplars — and vercel.json maps four of those onto root URLs. The rest are
-# the build's *inputs*: the bundle is no longer committed, so the deploy runs
-# `npm run build`, and a deploy without `package.json` or `web/` is a deploy
-# that cannot build. That is the trade for not committing build output — the
-# TypeScript sources ship alongside the app. They are already public, so this
-# is deploy size and tidiness, not secrecy.
+# Everything named below is a build *input*: `vite build` needs its root
+# (web/), the assets it copies through (public/), and the four config files.
+# What gets *served* is none of them — the output directory is dist/, which the
+# build produces — so the TypeScript sources are uploaded and never published.
 #
-# `node_modules` is excluded by the wildcard and should be: Vercel installs it
+# node_modules is excluded by the wildcard and should be: Vercel installs it
 # during the build rather than taking a copy of one machine's.
 /*
-!/static
+!/public
 !/web
 !/package.json
 !/package-lock.json

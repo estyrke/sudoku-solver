@@ -2,14 +2,9 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "buildCommand": "npm run build",
-  "outputDirectory": ".",
+  "outputDirectory": "dist",
   "cleanUrls": false,
-  "rewrites": [
-    { "source": "/", "destination": "/static/index.html" },
-    { "source": "/share", "destination": "/static/index.html" },
-    { "source": "/manifest.webmanifest", "destination": "/static/manifest.webmanifest" },
-    { "source": "/sw.js", "destination": "/static/sw.js" }
-  ],
+  "rewrites": [{ "source": "/share", "destination": "/index.html" }],
   "headers": [
     {
       "source": "/manifest.webmanifest",

@@ -212,9 +212,9 @@ describe("android share target", () => {
     // endpoint that used to be the fourth place; there is no server in this
     // path any more, so it lives here with the rest of the share target.
     const manifest = JSON.parse(
-      fs.readFileSync(path.join(ROOT, "static/manifest.webmanifest"), "utf8"),
+      fs.readFileSync(path.join(ROOT, "public/manifest.webmanifest"), "utf8"),
     );
-    const worker = fs.readFileSync(path.join(ROOT, "static/sw.js"), "utf8");
+    const worker = fs.readFileSync(path.join(ROOT, "public/sw.js"), "utf8");
 
     it("is posted to the path the worker intercepts", () => {
       const target = manifest.share_target;

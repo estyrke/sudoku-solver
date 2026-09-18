@@ -13,7 +13,7 @@ image, for work that is a few dozen milliseconds of arithmetic on pixels the dev
 had.
 
 We **ported the reader to TypeScript and run it in the page on a custom OpenCV.js build**,
-committed as a versioned artifact under `static/vendor/opencv/`. Grid detection, cell
+committed as a versioned artifact under `public/vendor/opencv/`. Grid detection, cell
 parsing, digit classification and the Killer cage reader all run on the device; the Python
 reader, the server and the runtime are deleted. The reader takes decoded pixels — width,
 height, RGBA — and returns a board, leaving decoding to its caller, which in the browser

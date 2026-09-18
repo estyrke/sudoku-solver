@@ -1,20 +1,21 @@
-// Boots static/index.html under jsdom so the browser modules can be driven
-// headlessly. These tests exist because the page can faithfully call the API,
-// get a correct answer back and still drop it on the floor: killer.ts discarded
-// `hint.explanation` for four rounds of "the hint is unusable" while every
-// Python test and every live API check passed.
+// Boots the built page under jsdom so the browser modules can be driven
+// headlessly. These tests exist because the page can be handed a correct answer
+// and still drop it on the floor: killer.ts discarded `hint.explanation` for
+// four rounds of "the hint is unusable" while every test behind it passed.
+//
+// What it loads is dist/ — the site as deployed, not the sources it was built
+// from: dist/index.html with the script tag Vite rewrote, and dist/assets/app.js
+// as the bundle. So a module that fails to compile or bundle fails here too, and
+// `npm run build` is a prerequisite of this suite. dist/ is gitignored, so a
+// fresh clone builds once before running it.
 //
 // The page is loaded with `runScripts: "outside-only"`, so jsdom parses the
-// markup but never fetches or runs the <script src> tags. We import the built
-// modules ourselves instead, which keeps the network out of it and lets a test
-// swap in its own `fetch` before any module code runs.
-//
-// What we import is the real shipped artifact — static/dist/app.js, as built
-// from web/app.tsx by Vite — so a module that fails to compile or bundle fails
-// here too. The module reaches the page through the globals a browser gives it,
-// so `window` and `document` are pointed at this boot's jsdom before the import
-// runs; a cache-busting query gives every boot its own module instance, and so
-// its own board state.
+// markup but never fetches or runs the <script src> tags. We import the bundle
+// ourselves instead, which keeps the network out of it and lets a test swap in
+// its own `fetch` before any module code runs. The module reaches the page
+// through the globals a browser gives it, so `window` and `document` are pointed
+// at this boot's jsdom before the import runs; a cache-busting query gives every
+// boot its own module instance, and so its own board state.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -22,7 +23,7 @@ const { pathToFileURL } = require("node:url");
 const { JSDOM } = require("jsdom");
 
 const ROOT = path.resolve(__dirname, "..", "..");
-const DIST = path.join(ROOT, "static", "dist");
+const DIST = path.join(ROOT, "dist", "assets");
 
 // The whole app is one bundle now (see vite.config.ts), so every tab is always
 // present. Which one is in front is chosen per boot with `activate` instead —
@@ -88,7 +89,7 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
  *                                 address an element the page just created
  */
 async function boot({ fetch, tabs = [], activate = DEFAULT_TAB, url, setUp, afterMount } = {}) {
-  const dom = new JSDOM(fs.readFileSync(path.join(ROOT, "static/index.html"), "utf8"),
+  const dom = new JSDOM(fs.readFileSync(path.join(ROOT, "dist/index.html"), "utf8"),
                         { runScripts: "outside-only", pretendToBeVisual: true, url });
   const { window } = dom;
   const { document } = window;

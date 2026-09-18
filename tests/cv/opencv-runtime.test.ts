@@ -64,8 +64,8 @@ test("the WebAssembly is a file of its own, not inlined into the JavaScript", ()
   // --disable_single_file, asserted on the bytes rather than trusted from the
   // build script: a standalone .wasm is cached and streaming-compiled on its
   // own, and an inlined one would be base64 in the middle of opencv.js.
-  const js = readFileSync(new URL("../../static/vendor/opencv/opencv.js", import.meta.url), "utf8");
-  const wasm = readFileSync(new URL("../../static/vendor/opencv/opencv_js.wasm", import.meta.url));
+  const js = readFileSync(new URL("../../public/vendor/opencv/opencv.js", import.meta.url), "utf8");
+  const wasm = readFileSync(new URL("../../public/vendor/opencv/opencv_js.wasm", import.meta.url));
 
   assert.equal(wasm.subarray(0, 4).toString("binary"), "\0asm", "opencv_js.wasm should be a WebAssembly module");
   assert.match(js, /opencv_js\.wasm/, "opencv.js should fetch the .wasm by name");
@@ -125,10 +125,10 @@ test("in a browser it points Emscripten at the artifact's own directory", async 
 
     assert.equal(runtime as unknown, fakeRuntime);
     assert.equal(appended.length, 1);
-    assert.equal(appended[0].src, "/static/vendor/opencv/opencv.js");
+    assert.equal(appended[0].src, "/vendor/opencv/opencv.js");
 
     const locateFile = (globals.Module as { locateFile: (f: string) => string }).locateFile;
-    assert.equal(locateFile("opencv_js.wasm"), "/static/vendor/opencv/opencv_js.wasm");
+    assert.equal(locateFile("opencv_js.wasm"), "/vendor/opencv/opencv_js.wasm");
   } finally {
     resetOpenCVForTests();
     for (const [key, value] of Object.entries(saved)) {
@@ -146,7 +146,7 @@ test("the committed artifact came from the version the build script pins", () =>
   // actually regenerated the repository claims a build it does not contain.
   // Nothing else would notice: a stale artifact still loads and still works.
   const script = readFileSync(new URL("../../tools/opencv/build.sh", import.meta.url), "utf8");
-  const stamp = readFileSync(new URL("../../static/vendor/opencv/BUILD.txt", import.meta.url), "utf8");
+  const stamp = readFileSync(new URL("../../public/vendor/opencv/BUILD.txt", import.meta.url), "utf8");
 
   const pinned = (name: string) => script.match(new RegExp(`^${name}="([^"]+)"`, "m"))?.[1];
 
