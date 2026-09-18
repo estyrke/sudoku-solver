@@ -34,6 +34,7 @@ _Avoid_: Neighbor (reserved for adjacency in the Queens context)
 
 **Hint**:
 A single applicable technique's output: either a placement or one or more eliminations, plus the reasoning and the cells/units it turns on. Escalating techniques are tried simplest-first; `findHint` returns the first that applies.
+Applying one is a single Edit, and undoes as one — see the shell's Language in `CONTEXT-MAP.md`.
 _Avoid_: Step, move
 
 ### Killer Sudoku
