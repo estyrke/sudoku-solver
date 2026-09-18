@@ -1,6 +1,6 @@
 // Bringing the OpenCV runtime up, in the browser and in Node.
 //
-// The artifact under static/vendor/opencv/ is a custom build (see
+// The artifact under public/vendor/opencv/ is a custom build (see
 // docs/opencv-js-build.md). It is not an ES module and it is deliberately not
 // bundled. Its shape is worth stating, because it is not the one the flags
 // suggest: Emscripten emits it with MODULARIZE=1, but OpenCV then wraps that
@@ -140,7 +140,7 @@ export interface OpenCVPoint {
 /** Where the artifact is served from in the browser. The whole front end lives
  *  under this prefix (see vercel.json, which maps only four URLs out of it);
  *  the path is not configurable by accident. */
-const BROWSER_BASE_PATH = "/static/vendor/opencv";
+const BROWSER_BASE_PATH = "/vendor/opencv";
 
 /** One runtime per process, whoever asks.
  *
@@ -217,5 +217,5 @@ async function loadInNode(): Promise<OpenCVRuntime> {
   const require = createRequire(import.meta.url);
   // Already a promise: the UMD wrapper called the factory on require. Node
   // needs no locateFile — Emscripten looks beside opencv.js there.
-  return (await require("../../static/vendor/opencv/opencv.js")) as OpenCVRuntime;
+  return (await require("../../public/vendor/opencv/opencv.js")) as OpenCVRuntime;
 }

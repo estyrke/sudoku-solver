@@ -1,7 +1,7 @@
 // The digit exemplars recognition matches against.
 //
 // These are not rendered here, or anywhere at run time. They are the committed
-// bitmaps in static/reader/glyph-seeds.bin, which is the source of truth for
+// bitmaps in public/reader/glyph-seeds.bin, which is the source of truth for
 // them rather than a copy of one: text rasterisation differs across platforms
 // and classifying a ~16px glyph is sensitive enough to notice — macOS and Linux
 // once disagreed on more than half the cage sums of one screenshot. Shipping
@@ -24,7 +24,7 @@ import { loadAsset } from "./asset.ts";
 
 /** Where the asset is served from. The whole front end lives under this prefix
  *  (see vercel.json, which maps only four URLs out of it). */
-const ASSET_PATH = "/static/reader/glyph-seeds.bin";
+const ASSET_PATH = "/reader/glyph-seeds.bin";
 
 const MAGIC = "GLYPHS01";
 const HEADER_BYTES = MAGIC.length + 2;

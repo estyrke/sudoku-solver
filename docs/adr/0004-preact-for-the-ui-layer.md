@@ -3,7 +3,7 @@
 The browser UI was imperative DOM: ~1,700 lines across three tab modules, each keeping
 module-level mutable state in sync with the page by hand through `render()`,
 `applyHighlights()`, `syncNumpad()`, `renderTotals()` and `renderCageEditor()`. Each
-tab's markup lived in `static/index.html` while its behaviour lived in a separate `.ts`
+tab's markup lived in `web/index.html` while its behaviour lived in a separate `.ts`
 file, joined only by `id` strings and a row of `let el!: HTMLElement` non-null
 assertions. The same widgets — board grid, numpad, hint panel, reveal ladder, mode
 toggle, drop zone — were written out three times over, in both files.
@@ -22,7 +22,7 @@ this is an installed PWA and the bundle is meant to make room for a WASM payload
 - `web/app.tsx` holds a static `PUZZLES` array, the tab bar and the mount. Adding a
   puzzle type is: write `web/<name>.tsx`, import it, add it to the array.
 - `web/ui/` holds the shared widgets. A tab composes them; it does not build a grid.
-- `static/index.html` carries no per-tab markup — just `<div id="app">`. A tab's markup
+- `web/index.html` carries no per-tab markup — just `<div id="app">`. A tab's markup
   lives with the code that drives it.
 - **The engine is out of scope.** `web/sudoku/*.ts` stays pure TypeScript with no import
   of Preact and no knowledge of the DOM, and `tests/engine/` keeps running it unbundled
@@ -31,7 +31,7 @@ this is an installed PWA and the bundle is meant to make room for a WASM payload
 - **Every panel stays mounted for the life of the page**; a tab switch only flips
   `hidden`. Unmounting would throw away the board the player has been filling in. It is
   also why a tab checks whether it is in front before claiming a keystroke or a paste.
-- CSS class names were kept exactly as they were, so `static/style.css` did not change
+- CSS class names were kept exactly as they were, so `public/style.css` did not change
   and neither did the rendering. The page tests in `tests/ui/`, which drive the real
   built bundle through real events, carried over nearly untouched and are what showed the
   port had not changed behaviour.

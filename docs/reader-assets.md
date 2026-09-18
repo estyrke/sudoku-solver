@@ -23,7 +23,7 @@ regenerating them wholesale was already documented as harmful before that, so no
 was lost that anyone should have been using. Their formats are written down here so
 that a deliberate, targeted change is still possible.
 
-## `static/reader/glyph-seeds.bin` — the digit exemplars
+## `public/reader/glyph-seeds.bin` — the digit exemplars
 
 The exemplar set the classifier runs on, and the only one: the loop that learned new
 exemplars from boards the player confirmed is deleted. Previously this file was a

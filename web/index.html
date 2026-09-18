@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Sudoku Helper</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/style.css" />
   <!-- Installable on Android, which is also what makes the app show up in the
        share sheet: a share target is registered with the OS at install time. -->
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#1565c0" />
-  <link rel="icon" href="/static/icons/icon-192.png" />
+  <link rel="icon" href="/icons/icon-192.png" />
 </head>
 <body>
   <main>
@@ -19,8 +19,12 @@
          them — a tab's markup lives with the code that drives it. -->
     <div id="app"></div>
   </main>
-  <!-- Built from web/app.tsx by Vite; see vite.config.ts. Module scripts are
-       deferred, so DOMContentLoaded still fires after this has loaded. -->
-  <script type="module" src="/static/dist/app.js"></script>
+  <!-- This file is Vite's entry point, so the source is what is named here and
+       the build rewrites it to the bundle (see vite.config.ts). The stylesheet,
+       the manifest and the icon above are not rewritten: they are public assets
+       copied through verbatim, which is what keeps their URLs stable enough for
+       the service worker to precache them by name. Module scripts are deferred,
+       so DOMContentLoaded still fires after this has loaded. -->
+  <script type="module" src="/app.tsx"></script>
 </body>
 </html>

@@ -1,76 +1,70 @@
-import { readFileSync } from "node:fs";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig } from "vite";
 import preact from "@preact/preset-vite";
 
-// One ES module out, under static/dist/, which is what index.html loads and
-// what the jsdom page tests import. A fixed file name, no content hash:
-// index.html is a static file rather than something Vite generates, so the name
-// in its <script> tag has to stay stable.
+// The app is an ordinary Vite project, arranged so that what the build emits is
+// the whole deployable site rather than one file inside a hand-maintained one:
 //
-// The output is minified for asset size and cacheability only. It is not an
-// obfuscation or security measure — minified JavaScript is trivially readable,
-// and this bundle is a small fraction of the WASM payload the reader ships.
-
-/**
- * Serve the site locally the way the host serves it in production.
- *
- * Four URLs are not where their files are: `/`, `/share`, `/manifest.webmanifest`
- * and `/sw.js` all live under `static/` and are mapped onto root paths by the
- * host (vercel.json). A dev server without those mappings is a different site
- * from the deployed one in exactly the ways that matter — the manifest 404s, so
- * the app will not install, and a worker served from `/static` has a scope that
- * cannot cover `/share`, so the share target cannot be tried at all.
- *
- * The rewrite table is read from `vercel.json` rather than restated here: a
- * second copy of it would drift, and a dev server that routed differently from
- * the deploy is worse than no dev server. Only the rewrites are read. The
- * `headers` beside them — the explicit media types — are not applied, because
- * Vite serves these files from their own extensions and arrives at the same
- * answer; that is a coincidence the deploy cannot rely on, which is why the
- * headers are pinned in production by `tests/ui/hosting.test.js` instead.
- */
-function hostRewrites(): Plugin {
-  return {
-    name: "host-rewrites",
-    configureServer(server) {
-      const { rewrites } = JSON.parse(readFileSync("vercel.json", "utf8"));
-      const destinations = new Map<string, string>(
-        rewrites.map((rule: { source: string; destination: string }) => [
-          rule.source,
-          rule.destination,
-        ]),
-      );
-      server.middlewares.use((req, _res, next) => {
-        const [path, query] = (req.url ?? "/").split("?");
-        const destination = destinations.get(path);
-        // The query survives the rewrite: the share handoff redirects to
-        // `/?shared=1`, and a rewrite that dropped it would land on the app
-        // with the screenshot still sitting unclaimed in the cache.
-        if (destination) req.url = query ? `${destination}?${query}` : destination;
-        next();
-      });
-    },
-  };
-}
-
+//   web/          the Vite root. index.html is the entry; everything it pulls in
+//                 is TypeScript — the UI as Preact components in .tsx, the
+//                 engines and the reader as plain .ts.
+//   public/       assets copied through verbatim, at the site root. The service
+//                 worker, the manifest, the stylesheet, the icons, the OpenCV
+//                 build and the digit exemplars.
+//   dist/         the build output, and the thing that gets deployed. Gitignored.
+//
+// That arrangement is load-bearing in three places. `sw.js` has to be served
+// from the site root or its scope cannot cover /share and the Android share
+// target dies; the manifest has to be served from the root too, or it is
+// ignored and takes the share target with it. Both are public assets, so both
+// land at the root of the build with their own extensions and correct media
+// types, rather than needing a host rule to put them there. And `vite preview`
+// serves the build output, which means it serves the real site — so the
+// deployed app can be tried locally without a bespoke server standing in for
+// the host.
 export default defineConfig({
-  plugins: [preact(), hostRewrites()],
+  root: "web",
+  // Resolved from `root`, so this is the repo's own public/ rather than a
+  // web/public/: four megabytes of vendored OpenCV has no business sitting
+  // inside a directory that otherwise holds nothing but TypeScript.
+  publicDir: "../public",
+  plugins: [preact()],
   build: {
-    outDir: "static/dist",
+    outDir: "../dist",
+    // Vite refuses to empty an outDir outside its root unless told to, which is
+    // the right default and not what we want here: dist/ is ours and stale
+    // files in it would be deployed.
     emptyOutDir: true,
     minify: "esbuild",
     target: "es2022",
+    // No modulepreload polyfill. Vite injects one for an HTML entry by default,
+    // and it is the first thing the bundle runs — but it exists to preload
+    // *sibling chunks*, and `inlineDynamicImports` below means there is exactly
+    // one chunk and nothing to preload. Left on it costs a few hundred bytes
+    // and, because it reaches for `MutationObserver` as a bare global at module
+    // scope, it also breaks the jsdom page harness, which hands the modules a
+    // window rather than installing browser globals (tests/ui/harness.js).
+    modulePreload: false,
     rollupOptions: {
-      input: { app: "web/app.tsx" },
       output: {
-        format: "es",
-        entryFileNames: "[name].js",
-        chunkFileNames: "[name].js",
+        // A fixed name rather than a content hash. index.html is generated, so
+        // hashing would cost nothing there — but static/sw.js precaches the
+        // bundle *by name* on install, and a name only the build knows would
+        // have to be threaded into the worker somehow. Cache-busting is already
+        // handled: the worker serves cache-first and revalidates behind the
+        // response, so a new build lands on the launch after the one that
+        // fetched it.
+        entryFileNames: "assets/app.js",
+        chunkFileNames: "assets/[name].js",
+        assetFileNames: "assets/[name][extname]",
         // One file: the share handoff and the puzzle tabs share module state
-        // (web/ui/shared-reading.ts), so splitting them into separate entries
+        // (web/ui/shared-reading.ts), so splitting them into separate chunks
         // would give each its own copy of it and quietly break the handoff.
         inlineDynamicImports: true,
       },
     },
   },
+  // The one URL that is not a file: a share that the service worker did not
+  // intercept arrives as GET /share and has to show the app. Vite's own SPA
+  // fallback does this in dev and preview; vercel.json does it in production.
+  appType: "spa",
 });

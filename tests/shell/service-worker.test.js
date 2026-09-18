@@ -26,7 +26,7 @@ const vm = require("node:vm");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 
-const SOURCE = fs.readFileSync(path.join(ROOT, "static/sw.js"), "utf8");
+const SOURCE = fs.readFileSync(path.join(ROOT, "public/sw.js"), "utf8");
 const ORIGIN = "https://puzzles.example";
 
 /**
@@ -258,9 +258,9 @@ describe("offline precache", () => {
     const shell = worker.shell();
     // The bundle is the engine: hinting and solving are inside app.js, so a
     // shell cached without it loads a page that cannot answer anything.
-    assert.ok(shell.has("/static/dist/app.js"), "the engine bundle is precached");
+    assert.ok(shell.has("/assets/app.js"), "the engine bundle is precached");
     assert.ok(shell.has("/"), "so is the page itself");
-    assert.ok(shell.has("/static/style.css"), "and its stylesheet");
+    assert.ok(shell.has("/style.css"), "and its stylesheet");
     assert.ok(shell.has("/manifest.webmanifest"), "and the manifest, so an offline launch is still installable");
   });
 
@@ -270,11 +270,11 @@ describe("offline precache", () => {
 
     const dead = loadWorker({ fetch: offline, seed: Object.fromEntries(worker.caches) });
     const page = await get(dead.handlers, "/", { mode: "navigate" });
-    const bundle = await get(dead.handlers, "/static/dist/app.js");
+    const bundle = await get(dead.handlers, "/assets/app.js");
 
     assert.equal(page.status, 200);
     assert.equal(await page.text(), `fresh ${ORIGIN}/`);
-    assert.equal(await bundle.text(), `fresh ${ORIGIN}/static/dist/app.js`);
+    assert.equal(await bundle.text(), `fresh ${ORIGIN}/assets/app.js`);
   });
 
   it("serves a navigation to any in-scope URL from the cached page", async () => {
@@ -292,18 +292,18 @@ describe("offline precache", () => {
   it("refreshes a cached asset from the network when there is one", async () => {
     const worker = loadWorker();
     await lifecycle(worker.handlers);
-    const before = await worker.shell().get("/static/dist/app.js").clone().text();
+    const before = await worker.shell().get("/assets/app.js").clone().text();
 
     const next = loadWorker({
       fetch: async () => new Response("a newer build", { status: 200 }),
       seed: Object.fromEntries(worker.caches),
     });
-    const served = await get(next.handlers, "/static/dist/app.js");
+    const served = await get(next.handlers, "/assets/app.js");
     await next.settled();
 
     assert.equal(await served.text(), before, "the cached copy answers now");
     assert.equal(
-      await next.shell().get("/static/dist/app.js").clone().text(),
+      await next.shell().get("/assets/app.js").clone().text(),
       "a newer build",
       "and the new one is in the cache for next launch",
     );
@@ -323,7 +323,7 @@ describe("offline precache", () => {
     });
     const kept = [];
     next.handlers.fetch({
-      request: { url: `${ORIGIN}/static/dist/app.js`, method: "GET", mode: "no-cors" },
+      request: { url: `${ORIGIN}/assets/app.js`, method: "GET", mode: "no-cors" },
       respondWith: () => {},
       waitUntil: (value) => kept.push(value),
     });
@@ -337,12 +337,12 @@ describe("offline precache", () => {
     await lifecycle(worker.handlers);
 
     const dead = loadWorker({ fetch: offline, seed: Object.fromEntries(worker.caches) });
-    await get(dead.handlers, "/static/dist/app.js");
+    await get(dead.handlers, "/assets/app.js");
     await dead.settled();
 
     assert.equal(
-      await dead.shell().get("/static/dist/app.js").clone().text(),
-      `fresh ${ORIGIN}/static/dist/app.js`,
+      await dead.shell().get("/assets/app.js").clone().text(),
+      `fresh ${ORIGIN}/assets/app.js`,
       "the good copy survives an offline launch",
     );
   });
@@ -350,12 +350,12 @@ describe("offline precache", () => {
   it("drops a previous version's shell cache on activate", async () => {
     // Otherwise every deploy leaves its bundle behind in the user's storage.
     const worker = loadWorker({
-      seed: { "app-shell-stale": [[`${ORIGIN}/static/dist/app.js`, null]] },
+      seed: { "app-shell-stale": [[`${ORIGIN}/assets/app.js`, null]] },
     });
     await lifecycle(worker.handlers);
 
     assert.ok(!worker.caches.has("app-shell-stale"), "the old cache is gone");
-    assert.ok(worker.shell().has("/static/dist/app.js"), "replaced, not just deleted");
+    assert.ok(worker.shell().has("/assets/app.js"), "replaced, not just deleted");
   });
 
   it("keeps the share stash across an upgrade", async () => {

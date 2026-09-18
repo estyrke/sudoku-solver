@@ -1,6 +1,6 @@
 # The OpenCV.js artifact
 
-`static/vendor/opencv/` holds a custom OpenCV build — `opencv.js` and
+`public/vendor/opencv/` holds a custom OpenCV build — `opencv.js` and
 `opencv_js.wasm` — committed to the repository. This page says what is in it,
 why it is committed rather than built, and how to regenerate it.
 

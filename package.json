@@ -3,11 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The puzzle helper. Vite compiles web/*.ts into static/dist/, which is what index.html loads and what the jsdom page tests import; the bundle is built rather than committed, so `npm run build` comes before those tests and before a deploy. The app ships as the static files in static/ and there is no server.",
+  "description": "The puzzle helper. An ordinary Vite project: web/ is the root, public/ holds the assets copied through to the site root, and `vite build` emits dist/ — the whole deployable site, gitignored and built on deploy. There is no server.",
   "scripts": {
     "build": "vite build",
     "dev": "vite --port 8124 --strictPort",
-    "serve": "node tools/serve.mjs 8124",
+    "serve": "vite preview --port 8124 --strictPort",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

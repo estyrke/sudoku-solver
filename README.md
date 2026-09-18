@@ -11,25 +11,27 @@ no API key, and no server — the screenshot is never uploaded anywhere.
 
 ```bash
 npm ci
-npm run build   # web/ -> static/dist/app.js  (not committed; build it first)
-npm run dev     # live dev server at http://localhost:8124
+npm run dev     # http://localhost:8124, with hot reload
 ```
 
-The app is static files. All three local commands put the same four URLs at the root —
-`/`, `/share`, `/manifest.webmanifest` and `/sw.js` — because an installable manifest
-and a root-scoped service worker need them there, and they read those mappings out of
-`vercel.json` so that local and deployed are the same site:
+An ordinary Vite project, arranged so the build emits the whole site:
 
 | | |
 | --- | --- |
-| `npm run build` | `web/` → `static/dist/app.js`. Add `-- --watch` to rebuild as you edit |
-| `npm run dev` | Vite's dev server: what you want while working on `web/` |
-| `npm run serve` | the built files, served exactly as the host serves them |
+| `web/` | the Vite root. `index.html` is the entry; everything it pulls in is TypeScript |
+| `public/` | assets copied through verbatim to the site root — the service worker, the manifest, the stylesheet, the icons, the OpenCV build, the digit exemplars |
+| `dist/` | the build output, and the thing that gets deployed. Gitignored |
 
-`dev` transforms everything it serves, so the bundle it hands you is not the bundle
-that ships and `/sw.js` is not the bytes a browser would register as a worker. Use
-`serve` for anything about the real bundle, the service worker, the offline precache
-or installing the app.
+| | |
+| --- | --- |
+| `npm run build` | `web/` + `public/` → `dist/` |
+| `npm run dev` | Vite's dev server, with hot reload: what you want while working on `web/` |
+| `npm run serve` | `vite preview` over `dist/` — the deployed site, exactly as it ships |
+
+`dev` transforms what it serves, so the bundle it hands you is not the bundle that
+ships and `/sw.js` is not the bytes a browser would register as a worker. For anything
+about the real bundle, the service worker, the offline precache or installing the app,
+`npm run build && npm run serve`.
 
 ## Using it
 
@@ -76,13 +78,13 @@ still works; only sharing is missing. See
 
 | Layer | Where | What |
 | --- | --- | --- |
-| Reader | `web/reader/`, `static/reader/` | grid detection → cell parsing → template-matched digits, classic and Killer, in TypeScript on OpenCV.js. A screenshot is decoded by the browser's own codecs and read in the page, with no upload. Ported at parity from a Python reader that no longer exists — thresholds and all — and still pinned cell-for-cell (Killer: cage-for-cage, sum-for-sum) to the boards that reader produced. See `docs/adr/0006-the-screenshot-reader-runs-in-the-browser-on-opencv-js.md` and `docs/reader-assets.md` |
+| Reader | `web/reader/`, `public/reader/` | grid detection → cell parsing → template-matched digits, classic and Killer, in TypeScript on OpenCV.js. A screenshot is decoded by the browser's own codecs and read in the page, with no upload. Ported at parity from a Python reader that no longer exists — thresholds and all — and still pinned cell-for-cell (Killer: cage-for-cage, sum-for-sum) to the boards that reader produced. See `docs/adr/0006-the-screenshot-reader-runs-in-the-browser-on-opencv-js.md` and `docs/reader-assets.md` |
 | Browser UI | `web/app.tsx`, `web/ui/`, `web/<puzzle>.tsx` | the tab shell, the widgets every tab shares, and one file per puzzle type — Preact components, see `docs/adr/0004-preact-for-the-ui-layer.md` |
 | Browser engine | `web/sudoku/` | board model with Cages, the escalating technique catalogue (classic and Killer alike), `findHint`, `solve` and the mistake audit |
 | Browser engine | `web/queens/` | the Queens board model (variable N, irregular Regions), its technique catalogue, `findHint` and the backtracking `solve` — a separate engine sharing no code with `web/sudoku/`, see `docs/adr/0001-sudoku-and-queens-as-separate-contexts.md` |
-| PWA shell | `static/manifest.webmanifest`, `static/sw.js`, `web/pwa.ts` | installability, the Android share target, and the offline precache of the shell + engine bundle |
-| OpenCV runtime | `static/vendor/opencv/`, `web/cv/runtime.ts`, `tools/opencv/` | a custom OpenCV.js build — core and imgproc only — committed as an artifact, and the loader that brings it up in the browser or Node. What the reader runs on. See `docs/opencv-js-build.md` |
-| Hosting | `vercel.json`, `.vercelignore` | the app deploys as static files, built on deploy by `npm run build`. Four URLs — `/`, `/share`, `/manifest.webmanifest` and `/sw.js` — are mapped onto files under `static/`, which is what a root-scoped service worker and an installable manifest require. Because the bundle is built there rather than committed, the build's inputs (`web/`, `package.json`, the Vite config) are part of the deploy too |
+| PWA shell | `public/manifest.webmanifest`, `public/sw.js`, `web/pwa.ts` | installability, the Android share target, and the offline precache of the shell + engine bundle |
+| OpenCV runtime | `public/vendor/opencv/`, `web/cv/runtime.ts`, `tools/opencv/` | a custom OpenCV.js build — core and imgproc only — committed as an artifact, and the loader that brings it up in the browser or Node. What the reader runs on. See `docs/opencv-js-build.md` |
+| Hosting | `vercel.json`, `.vercelignore` | the app deploys as static files, built on deploy by `npm run build`, with `dist/` as the output directory. The service worker and the manifest are served from the site root because they are public assets and the build puts them there — not because a host rule moves them. The one URL that is not a file is `/share`, and it is the one rewrite |
 
 There is no server and no runtime Python. What is left of Python is a tooling island
 under `tools/`, for work that genuinely happens offline: icons are drawn by
@@ -97,26 +99,33 @@ pip install -r tools/requirements.txt
 ### The front end build
 
 The browser modules are TypeScript in `web/` — the UI as Preact components in
-`.tsx`, the engine as plain `.ts` — compiled and bundled by Vite into one
-`static/dist/app.js`, which is what `static/index.html` loads:
+`.tsx`, the engine as plain `.ts` — entered through `web/index.html` and bundled by
+Vite into one `dist/assets/app.js`, with the script tag rewritten to match:
 
 ```bash
 npm ci
-npm run build       # web/app.tsx -> static/dist/app.js
+npm run build       # web/ + public/ -> dist/
 npm run typecheck   # tsc --noEmit
 ```
 
-`static/dist/` is gitignored: the bundle is built, not committed. Vercel runs
-`npm run build` on deploy, and CI runs it before the suites that import the bundle, so
-the same command produces it everywhere and nothing has to be kept in step by hand.
-A fresh clone has no bundle until you build one — which is why `npm run build` is the
-second line of the quick-start and a prerequisite of `tests/ui/`.
+`dist/` is gitignored: it is built, not committed. Vercel runs `npm run build` on
+deploy, and CI runs it before the suites that read `dist/`, so one command produces it
+everywhere and nothing has to be kept in step by hand. A fresh clone has no `dist/`
+until you build one — which is why it is a prerequisite of `tests/ui/`.
+
+The bundle has a fixed name rather than a content hash, which is a constraint
+`public/sw.js` places on the build: the worker precaches the shell *by name* on
+install, and a name only the build knew would have to be threaded into the worker
+somehow. Cache-busting is already handled — the worker serves cache-first and
+revalidates behind the response, so a new build lands on the launch after the one that
+fetched it.
 
 The output is minified for asset size and cacheability only — not as obfuscation or a
 security measure, since minified JavaScript is trivially readable.
 
-`static/sw.js` stays hand-written JavaScript outside the bundle: it is served from the
-site root so its scope covers `/share`, and the browser loads it as a worker.
+`public/sw.js` stays hand-written JavaScript outside the bundle: it is copied through
+verbatim so that it lands at the site root, where its scope covers `/share`, and the
+browser loads it as a worker rather than as part of the bundle.
 
 ### Adding a puzzle type
 
@@ -128,7 +137,7 @@ Three steps, and no edits anywhere else:
 2. Import it in `web/app.tsx`.
 3. Add it to that file's `PUZZLES` array.
 
-`static/index.html` holds no per-tab markup: a tab's markup lives with the code
+`web/index.html` holds no per-tab markup: a tab's markup lives with the code
 that drives it. Every panel stays mounted for the life of the page and a tab
 switch only flips `hidden`, so a board survives being switched away from — which
 is also why a tab checks whether it is in front before claiming a keystroke.
@@ -144,7 +153,7 @@ back to derived candidates), so elimination steps persist and later singles unlo
 ### Reading
 
 Digits are classified by normalized cross-correlation against a store of exemplars,
-which ships **seeded** as `static/reader/glyph-seeds.bin` and is fetched on the first
+which ships **seeded** as `public/reader/glyph-seeds.bin` and is fetched on the first
 read. There is exactly one recognition path. The reader used to also *learn* from every
 board you confirmed, adapting to your particular app, and that loop is gone along with
 the server that ran it — a per-device store that never synced was a worse answer to
@@ -186,7 +195,7 @@ classified as a 7, the open-topped 4 that classified as a 9, the board frame hai
 that invented pencil marks — and the explanation each carries is the more useful half.
 
 `tests/cv/` asserts nothing about any puzzle. It loads the committed OpenCV build from
-`static/vendor/opencv/` through `web/cv/runtime.ts` and converts a small image, which
+`public/vendor/opencv/` through `web/cv/runtime.ts` and converts a small image, which
 is the cheapest way to catch a regenerated artifact that was linked without the modules
 the reader needs, emitted in a shape the loader does not expect, or committed without
 its `.wasm`. See `docs/opencv-js-build.md`.
@@ -194,17 +203,17 @@ its `.wasm`. See `docs/opencv-js-build.md`.
 `tests/share/` covers the one step where a reading becomes a tab. Neither neighbour can
 hold it: jsdom never reaches it, and the reader suite ends before tabs exist.
 
-The UI suite (`tests/ui/`) loads `static/index.html` under jsdom, imports the built
-modules from `static/dist/` and drives the page with real events, asserting on what
-ends up in the DOM. It runs against the shipped bundle, so it needs `npm run build`
-first. It is deliberately separate: a correct engine is not enough if the page discards
+The UI suite (`tests/ui/`) loads `dist/index.html` under jsdom, imports the bundle
+beside it and drives the page with real events, asserting on what ends up in the DOM.
+It runs against the site as deployed rather than the sources it was built from, so it
+needs `npm run build` first. It is deliberately separate: a correct engine is not enough if the page discards
 what it says, which is exactly how an unusable hint survived several rounds of fixes to
 the engine behind it. Nothing here reaches the network, and `fetch` is stubbed to
 record every call, so a regression that routes anything back through a host that no
 longer exists fails loudly.
 
 `tests/shell/` is the shell the page is installed *inside*, and boots no page at all.
-`service-worker.test.js` runs `static/sw.js` outside a browser in a vm sandbox — the
+`service-worker.test.js` runs `public/sw.js` outside a browser in a vm sandbox — the
 share handoff and the offline precache have no other home, since jsdom has no worker.
 `hosting.test.js` reads `vercel.json` and checks it against the files it points at: a
 manifest served as the wrong media type, or a worker served from a subdirectory, kills

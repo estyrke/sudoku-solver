@@ -75,14 +75,14 @@ jobs:
         run: npm test
         working-directory: tests/components
 
-      # static/dist is not committed — the deploy runs this same command
+      # dist/ is not committed — the deploy runs this same command
       # (vercel.json) — so this step is both the check that the sources still
-      # build and the only way the page suite below has a bundle to import.
-      - name: Build the bundle
+      # build and the only way the page suite below has a site to load.
+      - name: Build the site
         run: npm run build
 
       # The page under jsdom, driven with real events. Needs the build above:
-      # it imports the shipped bundle.
+      # it loads dist/, the site as deployed, rather than the sources.
       - name: Install (page)
         run: npm ci
         working-directory: tests/ui
@@ -91,8 +91,8 @@ jobs:
         working-directory: tests/ui
 
       # The shell the page is installed inside: sw.js run outside a browser in
-      # a vm sandbox, and the host configuration that serves it and the manifest
-      # from the root. Last because it is the cheapest, and its own step because
+      # a vm sandbox, and the arrangement that puts it and the manifest at the
+      # site root. Last because it is the cheapest, and its own step because
       # a broken worker and a page that discards what the engine said are
       # different failures — which is the distinction the deleted Python job
       # used to draw, kept as a group rather than as a job.
