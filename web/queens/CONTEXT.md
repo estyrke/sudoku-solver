@@ -10,6 +10,8 @@ _Avoid_: Cat, crown, token
 
 **Region**:
 An irregularly-shaped, contiguous group of same-colored cells. Exactly one Queen must land in each region — the Queens-context analogue of a Sudoku Box, except regions vary in shape and size and are supplied as board data, never implied by position.
+Painting one is a single Edit however many cells the drag covers, and undoes as one — see the
+shell's Language in `CONTEXT-MAP.md`.
 _Avoid_: Color, zone, box, group
 
 **Mark**:
