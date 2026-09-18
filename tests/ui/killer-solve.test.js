@@ -37,17 +37,14 @@ describe("killer solve", () => {
         throw new Error("Killer solve must not touch the network");
       },
     });
-    ui.window.PuzzleShell.get("killer").acceptShared(
-      new ui.window.File([], "board3.png", { type: "image/png" }),
-      {
-        board: BOARD,
-        unsure: [],
-        fully_caged: true,
-        checksum_ok: true,
-        sum_total: 405,
-        needs_review: false,
-      },
-    );
+    ui.window.PuzzleShell.get("killer").acceptShared({
+      board: BOARD,
+      unsure: [],
+      fully_caged: true,
+      checksum_ok: true,
+      sum_total: 405,
+      needs_review: false,
+    });
     await ui.flush();
     ui.fire(ui.inPanel("#kSolve"), "click");
   });

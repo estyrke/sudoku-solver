@@ -11,30 +11,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Model, techniques, solver, audit and the CV reader. The reader's digit
-  # exemplars are baked into sudoku/reader/glyph_seeds.npz, and its synthetic
-  # classic board into tests/fixtures/, rather than being rendered at import or
-  # at test time, precisely so this job agrees with a developer's macOS run —
-  # cv2.putText anti-aliases differently across platforms.
-  python:
-    name: Python tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.14"
-          cache: pip
-          cache-dependency-path: requirements-dev.txt
-      - run: pip install -r requirements-dev.txt
-      - run: pytest -q
-
-  # The browser modules: typechecked, built, then driven headlessly through
-  # jsdom. Separate from the Python job because "the engine is wrong" and "the
-  # page never showed what the engine said" are different failures and should
-  # read differently.
-  ui:
-    name: UI tests
+  # One job, because there is one language left: the app is static files and
+  # every engine, both readers and the share dispatcher run in the browser. The
+  # Python job that used to sit beside this one went with the runtime it tested.
+  #
+  # What that job's separation was for is kept as separate steps instead. "The
+  # engine is wrong", "the reader misread the screenshot" and "the page never
+  # showed what the engine said" are different failures, and a run that fails
+  # should say which one it was without anyone opening the log.
+  test:
+    name: Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -46,45 +32,76 @@ jobs:
             package-lock.json
             tests/ui/package-lock.json
             tests/components/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
-      # tests/engine: pure-logic unit tests for web/sudoku's ported engine
-      # (Board, solve, ...), run straight off the .ts source with Node's own
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Pure-logic unit tests for the ported engines in web/sudoku/ and
+      # web/queens/ (Board, the technique catalogues, findHint, solve, the
+      # mistake audit), run straight off the .ts source with Node's own
       # type-stripping rather than through Vite — see tests/engine/package.json.
-      - run: npm test
+      - name: Engine
+        run: npm test
         working-directory: tests/engine
-      # tests/cv: the committed OpenCV.js artifact and its loader. Cheap to
-      # run and the only thing standing between a bad regeneration of
-      # static/vendor/opencv/ and a reader that cannot start.
-      - run: npm test
+
+      # The committed OpenCV.js artifact and its loader. Cheap to run and the
+      # only thing standing between a bad regeneration of static/vendor/opencv/
+      # and a reader that cannot start.
+      - name: OpenCV artifact
+        run: npm test
         working-directory: tests/cv
-      # tests/reader: the ported screenshot reader, held to the board the
-      # Python reader produces from the same committed fixture. This is where
-      # "ported at parity" is actually checked.
-      - run: npm test
+
+      # The screenshot reader, held cell-for-cell to the boards committed
+      # beside the fixture screenshots. This is where "ported at parity" is
+      # actually checked, and it runs against the same WASM the browser loads.
+      - name: Reader
+        run: npm test
         working-directory: tests/reader
-      # tests/share: the step where a shared screenshot's reading becomes a
-      # tab. Neither neighbour can hold it — jsdom never reaches it, and the
-      # reader suite ends before tabs exist — so it runs on its own.
-      - run: npm test
+
+      # The step where a shared screenshot's reading becomes a tab. Neither
+      # neighbour can hold it — jsdom never reaches it, and the reader suite
+      # ends before tabs exist — so it runs on its own.
+      - name: Share handoff
+        run: npm test
         working-directory: tests/share
-      # tests/components: the shared widgets in web/ui/ on their own, under
-      # Vitest — they are .tsx, which Node's type-stripping cannot compile.
-      - run: npm ci
+
+      # The shared widgets in web/ui/ on their own, under Vitest — they are
+      # .tsx, which Node's type-stripping cannot compile.
+      - name: Install (components)
+        run: npm ci
         working-directory: tests/components
-      - run: npm test
+      - name: Components
+        run: npm test
         working-directory: tests/components
-      - run: npm run build
+
+      - name: Build the bundle
+        run: npm run build
       # static/dist is committed because the deploy has no Node step: what is in
-      # the repo is what gets served. A build that changes it means the sources
-      # moved on without it.
+      # the repo is what gets served (vercel.json skips the build outright). A
+      # build that changes it means the sources moved on without it.
       - name: The committed bundle matches the sources
         # --porcelain as well as diff: a build that emits a file name nobody has
         # committed yet is untracked, and `git diff` would not see it.
         run: |
           git diff --exit-code -- static/dist
           test -z "$(git status --porcelain -- static/dist)"
-      - run: npm ci
+
+      # The page under jsdom, driven with real events. Needs the build above:
+      # it imports the shipped bundle.
+      - name: Install (page)
+        run: npm ci
         working-directory: tests/ui
-      - run: node --test
+      - name: Page
+        run: npm test
         working-directory: tests/ui
+
+      # The shell the page is installed inside: sw.js run outside a browser in
+      # a vm sandbox, and the host configuration that serves it and the manifest
+      # from the root. Last because it is the cheapest, and its own step because
+      # a broken worker and a page that discards what the engine said are
+      # different failures — which is the distinction the deleted Python job
+      # used to draw, kept as a group rather than as a job.
+      - name: Service worker and hosting
+        run: npm test
+        working-directory: tests/shell

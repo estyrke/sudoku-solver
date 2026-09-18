@@ -1,11 +1,12 @@
 // The Killer reader, end to end, against the boards the Python reader
-// produces from the same screenshots.
+// produced from the same screenshots.
 //
 // This is the parity gate. The fixtures are committed pixels and the reads
-// beside them are committed JSON, both already pinned by tests/test_reader.py
-// (tests/fixtures/killer_boards/*.json) — so this asserts the ported pipeline
-// agrees with the one it was ported from, cage by cage and sum by sum, rather
-// than merely agreeing with itself.
+// beside them are committed JSON (tests/fixtures/killer_boards/*.json), pinned
+// to that reader's output before it was deleted (ADR 0006) — so this asserts
+// the ported pipeline agrees with the one it was ported from, cage by cage and
+// sum by sum, rather than merely agreeing with itself. Both are frozen
+// artifacts now; see docs/reader-assets.md before changing either.
 //
 // Ported from tests/test_reader.py's Killer section, docstrings and all: each
 // of these exists because a real screenshot broke in a specific way, and the

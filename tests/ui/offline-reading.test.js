@@ -8,6 +8,10 @@
 // so the last test in this file has turned around: a shared screenshot that
 // arrives on a phone with no signal must not blame the connection either,
 // because the connection has nothing to do with it.
+//
+// With the self-calibration loop deleted there is no longer any path from this
+// page to a server at all, which the last suite here pins from the other end:
+// not "reading does not upload" but "there is nothing left that would".
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
@@ -122,5 +126,35 @@ describe("reading a screenshot offline", () => {
     assert.match(status.textContent, /could not read/i);
     assert.doesNotMatch(status.textContent, /offline/i);
     assert.doesNotMatch(status.textContent, /Failed to fetch/);
+  });
+});
+
+describe("correcting a misread", () => {
+  it("does not offer to teach the reader from the correction", async () => {
+    // The self-calibration loop is gone: "Confirm reading" posted the corrected
+    // board and the original screenshot back so the classifier could learn from
+    // them, and it was the last thing in the page that called the network. It
+    // existed to compensate for template matching being font-brittle, and the
+    // trained classifier that replaces that leaves one recognition path — the
+    // seeded exemplars — rather than one per device that never synced.
+    const ui = await pasteOffline("sudoku");
+    const panel = ui.document.querySelector('[data-tab-panel="sudoku"]');
+
+    assert.equal(ui.document.getElementById("confirmRead"), null);
+    assert.doesNotMatch(panel.textContent, /confirm/i);
+  });
+
+  it("leaves nothing in the page that calls the network", async () => {
+    // Every button the Sudoku tab still offers, clicked in turn: after the port
+    // there is no server to call, so any call at all is a regression — a path
+    // quietly routed back through a host that no longer answers, which would
+    // fail only on a real deploy.
+    const ui = await pasteOffline("sudoku");
+    const panel = ui.document.querySelector('[data-tab-panel="sudoku"]');
+
+    for (const button of panel.querySelectorAll(".actions button")) ui.fire(button, "click");
+    await ui.flush();
+
+    assert.deepEqual(ui.calls, []);
   });
 });

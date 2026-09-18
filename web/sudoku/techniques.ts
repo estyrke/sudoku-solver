@@ -116,7 +116,7 @@ function ruledOutBy(board: Board, cell: Coord, d: number): [Coord, string] | nul
  * look like sleight of hand — "8 fits only in r8c9" reads as nonsense to
  * someone who can still see an 8 pencilled in r8c8. Correcting the marks is the
  * missing first step, not something to apply behind the player's back
- * (`sudoku/CONTEXT.md`, *Pencil mark*).
+ * (`web/sudoku/CONTEXT.md`, *Pencil mark*).
  *
  * It matters most on Killer boards, where a cage-mate rules out a digit even
  * though it shares no row, column or box — a constraint most apps' auto-notes

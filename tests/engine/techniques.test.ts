@@ -35,7 +35,7 @@ const has = (cells: Coord[], cell: Coord): boolean =>
 const EMPTY = new Board();
 
 /** A reference Killer board as the reader read it — the same files
- * solver.test.ts solves and tests/test_reader.py pins the read of. */
+ * solver.test.ts solves and tests/reader/killer-board.test.ts pins the read of. */
 const fixture = (name: string): Board =>
   Board.fromWire(
     JSON.parse(

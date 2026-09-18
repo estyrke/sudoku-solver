@@ -2,8 +2,8 @@
 //
 // The reader's data — the digit exemplars today — lives under static/ and is
 // fetched at run time rather than bundled: it is a few hundred kilobytes of
-// bytes that change only when they are re-baked, so it caches on its own and
-// costs nothing to the player who never reads a screenshot.
+// bytes that change only when they are deliberately changed, so it caches on
+// its own and costs nothing to the player who never reads a screenshot.
 //
 // Node has no fetch against a path, and the reader's tests run there against
 // the same files the browser is served. One place knows that difference.

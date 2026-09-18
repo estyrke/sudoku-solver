@@ -1,13 +1,16 @@
 // Digit classification by template matching.
 //
-// A port of sudoku/reader/classify.py, thresholds and all. A glyph crop
-// (ink-on-black, 8-bit) is normalised to a fixed square and compared against
-// the stored exemplars by normalised cross-correlation; the best-matching
-// exemplar wins, whichever digit it belongs to.
+// A port of the deleted Python reader's sudoku/reader/classify.py (ADR 0006),
+// thresholds and all. A glyph crop (ink-on-black, 8-bit) is normalised to a
+// fixed square and compared against the stored exemplars by normalised
+// cross-correlation; the best-matching exemplar wins, whichever digit it
+// belongs to.
 //
-// The exemplars are the baked seeds (web/reader/seeds.ts). The Python reader
-// could also learn exemplars from a player's confirmed corrections; that loop
-// is still server-side and is not part of this reader.
+// The exemplars are the seeds in web/reader/seeds.ts, and they are the only
+// ones there are. The Python reader could also learn exemplars from a player's
+// confirmed corrections, into a per-device store that never synced; that loop
+// went with the server and is not coming back here — the classifier that
+// replaces template matching is the answer to font-brittleness instead.
 
 import type { OpenCVRuntime } from "../cv/runtime.ts";
 import { MatScope, pyRound, type Gray } from "./pixels.ts";

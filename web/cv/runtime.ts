@@ -137,8 +137,9 @@ export interface OpenCVPoint {
   y: number;
 }
 
-/** Where the artifact is served from in the browser. app.py mounts static/ at
- *  this prefix; the path is not configurable by accident. */
+/** Where the artifact is served from in the browser. The whole front end lives
+ *  under this prefix (see vercel.json, which maps only four URLs out of it);
+ *  the path is not configurable by accident. */
 const BROWSER_BASE_PATH = "/static/vendor/opencv";
 
 /** One runtime per process, whoever asks.

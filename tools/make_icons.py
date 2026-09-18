@@ -1,9 +1,11 @@
 """Draw the app icons.
 
-Committed alongside the PNGs it produces, the way ``sudoku/reader/calibrate.py``
-is committed alongside its baked exemplars: the output is what ships, but a
+Committed alongside the PNGs it produces: the output is what ships, but a
 checked-in generator means the icons can be re-cut at a new size or recoloured
-without anyone having to find the original artwork.
+without anyone having to find the original artwork. Unlike the reader's frozen
+assets (``docs/reader-assets.md``), these are safe to regenerate — nothing
+classifies them, so a platform's anti-aliasing differing by a shade does not
+matter.
 
     python -m tools.make_icons
 

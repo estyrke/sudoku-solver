@@ -10,11 +10,12 @@ Two reasons, and the second is the real one.
 
 Compiling OpenCV takes tens of minutes, which nobody wants in CI on every push.
 More importantly, the bytes have to be the same for a developer and for CI. The
-reader already bakes its digit exemplars into `sudoku/reader/glyph_seeds.npz`
-rather than rendering them at import, precisely because `cv2.putText`
-anti-aliases differently across platforms and a CI box would otherwise disagree
-with a laptop. A toolchain-dependent artifact rebuilt per machine would
-reintroduce exactly that class of failure, one layer down.
+reader ships its digit exemplars as committed bitmaps rather than rendering them
+at load, precisely because text rasterises differently across platforms and a CI
+box would otherwise disagree with a laptop — see
+[docs/reader-assets.md](./reader-assets.md). A toolchain-dependent artifact
+rebuilt per machine would reintroduce exactly that class of failure, one layer
+down.
 
 So the artifact is an input, not an output: `tools/opencv/build.sh` is run by
 hand when OpenCV is upgraded, and what it writes is committed.
@@ -102,9 +103,9 @@ WebAssembly really is a separate file, that the browser branch points
 Emscripten at the right directory before the script loads, and that the
 committed artifact was built from the versions the script pins. It runs in CI.
 
-Nothing in the app calls the loader yet. The screenshot reader still runs on
-the server (`sudoku/reader/`, via `/parse` and friends); this artifact is
-groundwork for moving it into the browser, and until that lands the artifact is
-shipped but unused — in particular the service worker does not precache it,
-since precaching four megabytes nothing calls would slow every install for
-nothing.
+This artifact is what the screenshot reader runs on: `web/reader/` is the whole
+pipeline, in the page, and there is no server-side reader any more (see
+[ADR 0006](./adr/0006-the-screenshot-reader-runs-in-the-browser-on-opencv-js.md)).
+The service worker deliberately does not precache it. It is fetched on the first
+read instead, so installing the app stays fast and only a player who actually
+reads a screenshot pays for several megabytes.

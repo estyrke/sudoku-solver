@@ -4,8 +4,8 @@
 #
 # The artifact is committed rather than built in CI. Compiling OpenCV takes
 # tens of minutes, and more importantly the bytes have to be identical for a
-# developer and for CI: the reader already bakes its digit exemplars into
-# sudoku/reader/glyph_seeds.npz for exactly that reason. So this script is run
+# developer and for CI: the reader ships its digit exemplars as committed
+# bitmaps for exactly that reason (docs/reader-assets.md). So this script is run
 # by hand when OpenCV is upgraded, and its output is committed.
 #
 # Usage:  tools/opencv/build.sh [output_dir]

@@ -1,8 +1,9 @@
 // Turn one cell image into (value, given?, pencil marks, confidence).
 //
-// A port of sudoku/reader/cell_parse.py. Every threshold below is that file's
-// value, including the ones that are known to be specific to one app: this
-// reader is the Python one moved, not the Python one improved.
+// A port of the deleted Python reader's sudoku/reader/cell_parse.py (ADR 0006).
+// Every threshold below is that file's value, including the ones that are known
+// to be specific to one app: this reader is the Python one moved, not the
+// Python one improved.
 //
 // A cell holds at most one large central glyph (a Pen value or a Given) OR
 // several small Pencil marks. Binarize, drop the grid border, then decide by
@@ -30,10 +31,10 @@ const NOISE_MIN_AREA = 8;
 const VALUE_CONF = 0.45;
 /** Mean saturation above this means an entered (tinted) digit, not a Given. */
 const SAT_GIVEN_MAX = 55;
-// `MARK_MIN_H` and `MARK_MAX_H` are not missing: the Python file still declares
-// them but nothing reads them — positional detection replaced the size filter
-// they belonged to. Porting a threshold no code consults would be porting a
-// claim, not a behaviour.
+// `MARK_MIN_H` and `MARK_MAX_H` are not missing: the Python file declared them
+// but nothing read them — positional detection had replaced the size filter
+// they belonged to. Porting a threshold no code consults would have been
+// porting a claim, not a behaviour.
 /** Margin discarded from every edge of a cell, to drop the grid lines. */
 const BORDER_MARGIN = 0.12;
 

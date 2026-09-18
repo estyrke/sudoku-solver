@@ -1,11 +1,12 @@
 // The digit exemplars, as the browser reader gets them.
 //
-// These are the bytes recognition actually runs on, and they are baked rather
-// than rendered precisely so that a developer's machine and a CI box agree (see
-// tools/reader/bake_glyph_seeds.py). So what is worth asserting is not that the
-// file parses but that it still carries the same exemplars the Python reader
-// classifies against — a re-bake that quietly dropped or rescaled a digit would
-// leave every other test in this suite testing a different classifier.
+// These are the bytes recognition actually runs on, and they are committed
+// bitmaps rather than anything rendered, precisely so that a developer's
+// machine and a CI box agree (see docs/reader-assets.md). So what is worth
+// asserting is not that the file parses but that it still carries the exemplars
+// the Python reader classified against — an edit that quietly dropped or
+// rescaled a digit would leave every other test in this suite testing a
+// different classifier, and pass.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -29,7 +30,7 @@ test("every digit arrives, at the size the classifier normalises to", async () =
   }
 });
 
-test("the exemplar counts match the Python reader's baked set", async () => {
+test("the exemplar counts still match the set the Python reader shipped", async () => {
   const seeds = await loadGlyphSeeds();
 
   // 5 fonts x 6 scale/thickness pairs, upright and slanted (the slant is what

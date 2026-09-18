@@ -18,12 +18,12 @@
 // scope covers /share, and it is loaded by the browser as a worker rather than
 // by this bundle.
 //
-// Browser APIs are reached through `window` (`window.fetch`, `window.FormData`,
-// `window.prompt`, …) rather than as bare globals, so the jsdom page harness can
-// substitute them per boot — see tests/ui/harness.js.
+// Browser APIs are reached through `window` (`window.caches`, `window.File`, …)
+// rather than as bare globals, so the jsdom page harness can substitute them
+// per boot — see tests/ui/harness.js.
 
 import { setShareStatus, type SharedReading } from "./ui/shared-reading.ts";
-import { messageOf, unreadableScreenshotMessage } from "./ui/offline.ts";
+import { messageOf, unreadableScreenshotMessage } from "./ui/read-failure.ts";
 import { decodeImageFile } from "./reader/decode.ts";
 import { readSharedScreenshot, type DispatchedReading } from "./reader/share-dispatch.ts";
 
@@ -84,7 +84,7 @@ export async function adoptSharedImage(): Promise<void> {
   // the same thing whether it was shared, dropped or pasted.
   try {
     say("Reading the shared screenshot…");
-    handToTab(await readSharedScreenshot(await decodeImageFile(file)), file);
+    handToTab(await readSharedScreenshot(await decodeImageFile(file)));
   } catch (err) {
     say(unreadableScreenshotMessage(err), true);
   }
@@ -99,13 +99,17 @@ export async function adoptSharedImage(): Promise<void> {
  * OpenCV runtime, and jsdom has neither. Exported so the link between the two
  * halves is tested for what it is (tests/share/), rather than left as the seam
  * every suite happens to step over.
+ *
+ * The screenshot itself stops here: it used to be handed over alongside the
+ * reading so "Confirm reading" could re-extract glyphs from it, and with that
+ * loop deleted nothing past this point has a use for the pixels.
  */
-export function handToTab(reading: DispatchedReading, file: File): void {
+export function handToTab(reading: DispatchedReading): void {
   const puzzle = window.PuzzleShell.get(reading.kind);
   if (!puzzle || !puzzle.acceptShared) {
     setShareStatus(`Nothing here can open a ${reading.kind} board.`, true);
     return;
   }
   window.PuzzleShell.activate(reading.kind);
-  puzzle.acceptShared(file, reading as SharedReading);
+  puzzle.acceptShared(reading as SharedReading);
 }

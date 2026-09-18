@@ -24,7 +24,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const { ROOT } = require("./harness");
+const ROOT = path.resolve(__dirname, "..", "..");
 
 const SOURCE = fs.readFileSync(path.join(ROOT, "static/sw.js"), "utf8");
 const ORIGIN = "https://puzzles.example";
@@ -224,19 +224,23 @@ describe("share target service worker", () => {
   });
 
   it("ignores a POST to any other path", async () => {
+    // The worker owns exactly one POST, the share. Nothing else in the app
+    // posts anywhere — there is no server to post to — so anything that turns
+    // up here is something the worker has no business answering for.
     const { handlers } = loadWorker();
     let responded;
     handlers.fetch({
-      request: new Request(`${ORIGIN}/killer/parse`, { method: "POST", body: new FormData() }),
+      request: new Request(`${ORIGIN}/anything-else`, { method: "POST", body: new FormData() }),
       respondWith: (value) => (responded = value),
       waitUntil: () => {},
     });
-    assert.equal(responded, undefined, "the app's own uploads must go to the network");
+    assert.equal(responded, undefined, "the worker answers for POST /share and nothing else");
   });
 
   it("ignores a GET of /share", async () => {
-    // That one belongs to the server, which serves the app so a share without a
-    // registered worker is not a 404.
+    // That one belongs to the host, which rewrites it to the app so a share
+    // arriving without a registered worker is not a 404 — see the same
+    // rationale from the configuration's side in hosting.test.js.
     const { handlers } = loadWorker();
     assert.equal(await postShare(handlers, null, { method: "GET" }), undefined);
   });
@@ -363,17 +367,4 @@ describe("offline precache", () => {
     assert.equal(worker.stored.get(`${ORIGIN}/shared-image`), "kept");
   });
 
-  it("leaves the reader endpoints to the network", async () => {
-    // Nothing calls these any more — both readers run in the page — but the
-    // routes still exist server-side, and a cached answer from one would be a
-    // different board than the one the player just shared. This is the same
-    // guard against a POST to any other path as "ignores a POST to any other
-    // path" above, just for the specific paths that used to matter here.
-    const worker = loadWorker();
-    await lifecycle(worker.handlers);
-
-    assert.equal(await get(worker.handlers, "/parse", { method: "POST" }), undefined);
-    assert.equal(await get(worker.handlers, "/killer/parse", { method: "POST" }), undefined);
-    assert.equal(await get(worker.handlers, "/share/parse", { method: "POST" }), undefined);
-  });
 });

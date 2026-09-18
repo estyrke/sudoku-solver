@@ -1,8 +1,8 @@
 // Reading a classic Sudoku screenshot, in the browser.
 //
-// A port of sudoku/reader/read_board.py: grid detection, per-cell parsing and
-// template classification, tied together. This is the whole classic reader's
-// way in.
+// A port of the deleted Python reader's sudoku/reader/read_board.py (ADR
+// 0006): grid detection, per-cell parsing and template classification, tied
+// together. This is the whole classic reader's way in.
 //
 // It takes *decoded pixels*, not an encoded file. Decoding is the caller's
 // problem on purpose: in the browser the page decodes through the platform's

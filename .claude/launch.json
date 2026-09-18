@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "sudoku-web",
-      "runtimeExecutable": ".venv/bin/uvicorn",
-      "runtimeArgs": ["app:app", "--port", "8124"],
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
       "port": 8124
     }
   ]
