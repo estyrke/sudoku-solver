@@ -211,7 +211,13 @@ describe("share target service worker", () => {
     const res = await postShare(handlers, null);
 
     assert.equal(res.status, 303);
-    assert.equal(res.headers.get("location"), `${ORIGIN}/?shared=error`);
+    const location = new URL(res.headers.get("location"));
+    assert.equal(location.origin + location.pathname, `${ORIGIN}/`);
+    assert.equal(location.searchParams.get("shared"), "error");
+    // No file field at all is a different cause than a field with an empty
+    // file, and `why` is what keeps the two from looking identical on a
+    // real device's failure.
+    assert.equal(location.searchParams.get("why"), "no-image-field:none");
     assert.equal(stored.size, 0);
   });
 
@@ -219,7 +225,18 @@ describe("share target service worker", () => {
     const { handlers, stored } = loadWorker();
     const res = await postShare(handlers, new File([], "empty.png", { type: "image/png" }));
 
-    assert.match(res.headers.get("location"), /shared=error/);
+    const location = new URL(res.headers.get("location"));
+    assert.equal(location.searchParams.get("shared"), "error");
+    assert.equal(location.searchParams.get("why"), "empty:empty.png");
+    assert.equal(stored.size, 0);
+  });
+
+  it("names the fields it actually received when none of them is the image", async () => {
+    const { handlers, stored } = loadWorker();
+    const res = await postShare(handlers, screenshot(), { field: "photo" });
+
+    const location = new URL(res.headers.get("location"));
+    assert.equal(location.searchParams.get("why"), "no-image-field:photo");
     assert.equal(stored.size, 0);
   });
 

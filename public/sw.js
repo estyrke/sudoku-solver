@@ -156,6 +156,12 @@ const offlineResponse = () =>
 // --- share handoff ---------------------------------------------------------
 
 async function receiveShare(request) {
+  // Every branch that ends in "error" has a real cause — a parse failure, a
+  // missing field, a zero-byte file — but until now they were all collapsed
+  // into the same "didn't contain an image" line, which is fine right up
+  // until a real device sends something the code never anticipated. `why`
+  // carries that cause to the page (see pwa.ts) instead of discarding it.
+  let why = "unknown";
   try {
     const shared = await request.formData();
     const file = shared.get("image");
@@ -168,10 +174,13 @@ async function receiveShare(request) {
       }));
       return redirectToApp("1");
     }
+    why = file
+      ? `empty:${file.name || "unnamed"}`
+      : `no-image-field:${[...shared.keys()].join(",") || "none"}`;
   } catch (err) {
-    // Fall through: the page says something useful, which beats a dead tab.
+    why = `threw:${(err && err.message) || err}`;
   }
-  return redirectToApp("error");
+  return redirectToApp("error", why);
 }
 
 // 303 so the browser turns the POST into a GET; any other redirect code would
@@ -180,5 +189,8 @@ async function receiveShare(request) {
 // The target is spelled out against the worker's own origin rather than left
 // relative. A browser would resolve a relative one against the worker's URL,
 // but only a browser would — being explicit is what lets this run under test.
-const redirectToApp = (state) =>
-  Response.redirect(new URL(`/?shared=${state}`, self.location.origin), 303);
+const redirectToApp = (state, why) => {
+  const url = new URL(`/?shared=${state}`, self.location.origin);
+  if (why) url.searchParams.set("why", why);
+  return Response.redirect(url, 303);
+};

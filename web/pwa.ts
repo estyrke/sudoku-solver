@@ -41,8 +41,13 @@ export function registerServiceWorker(): void {
 }
 
 export async function adoptSharedImage(): Promise<void> {
-  const state = new URLSearchParams(window.location.search).get("shared");
+  const params = new URLSearchParams(window.location.search);
+  const state = params.get("shared");
   if (!state) return;
+  // sw.js's own diagnosis of an "error" state — which field was missing, or
+  // what threw — so a real device's failure says more than a dropped file's
+  // ever could, without needing to plug it into a debugger to find out.
+  const why = params.get("why");
 
   // Drop the marker before doing anything else, so a reload does not try to
   // adopt a screenshot that has already been consumed (or already failed).
@@ -54,7 +59,10 @@ export async function adoptSharedImage(): Promise<void> {
   const say = (message: string, bad?: boolean) => setShareStatus(message, !!bad);
 
   if (state === "error") {
-    say("That share didn't contain an image the app could read.", true);
+    say(
+      `That share didn't contain an image the app could read.${why ? ` (${why})` : ""}`,
+      true,
+    );
     return;
   }
 
