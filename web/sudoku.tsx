@@ -97,6 +97,29 @@ const cellEdit = (index: number, before: Cell, after: Cell): CellEdit => ({
   },
 });
 
+/**
+ * `Solve`, `Clear board` or a screenshot import: every Cell set from its
+ * prior state to its new one in a single step (issue #50). Unlike a
+ * `CellEdit`, there is no one Cell to return the selection to on undo — the
+ * whole board moved — so `index` is `null` rather than the anchor of a
+ * single-Cell change.
+ *
+ * Carries the prior board wholesale rather than a per-Cell delta: undoing an
+ * import must restore which Cells were Givens, and the Given flag lives on
+ * the Cell like everything else an Edit needs to put back.
+ */
+interface BoardEdit extends Edit<Cell[]> {
+  index: null;
+}
+
+const boardEdit = (before: Cell[], after: Cell[]): BoardEdit => ({
+  index: null,
+  apply: () => after,
+  invert: () => before,
+});
+
+type SudokuEdit = CellEdit | BoardEdit;
+
 const sameCell = (a: Cell, b: Cell) =>
   a === b ||
   (a.value === b.value &&
@@ -106,9 +129,17 @@ const sameCell = (a: Cell, b: Cell) =>
     a.pencil_marks.every((m, i) => m === b.pencil_marks[i]));
 
 function SudokuPanel({ active }: { active: boolean }) {
-  const history = useHistory<Cell[], CellEdit>(emptyBoard());
+  const history = useHistory<Cell[], SudokuEdit>(emptyBoard());
   const cells = history.state;
-  const setCells = history.reset; // whole-board replacements not yet Edits of their own — issue #50
+  // `Solve`, `Clear board` and a screenshot import each record the whole
+  // board's prior state as a single undoable Edit (issue #50) — always, even
+  // if the result happens to match what was there (clearing an already-empty
+  // board, say). Unlike `editCell` below, skipping a no-op here would also
+  // skip discarding a stale Redo tail, and that guarantee matters more for a
+  // deliberate, rare action than avoiding one redundant Edit.
+  const replaceBoard = (next: Cell[]) => {
+    history.record(boardEdit(cells, next));
+  };
   const [selected, setSelected] = useState(0);
   const [mode, setMode] = useState<"pen" | "pencil">("pen");
   const [reveal, setReveal] = useState<Reveal | null>(null);
@@ -140,7 +171,7 @@ function SudokuPanel({ active }: { active: boolean }) {
     const edit = history.undo();
     if (!edit) return;
     clearHint();
-    select(edit.index); // see what moved
+    if (edit.index !== null) select(edit.index); // see what moved
   };
 
   const doRedo = () => {
@@ -202,7 +233,7 @@ function SudokuPanel({ active }: { active: boolean }) {
       return;
     }
     const wire = solved.toWire();
-    setCells(cells.map((cell, i) => ({ ...cell, value: wire.cells[i].value, pencil_marks: [] })));
+    replaceBoard(cells.map((cell, i) => ({ ...cell, value: wire.cells[i].value, pencil_marks: [] })));
     setResult("Solved.");
     clearHint();
   };
@@ -268,14 +299,16 @@ function SudokuPanel({ active }: { active: boolean }) {
         };
       }
     }
-    setCells(next);
+    // Applying a hint step is not yet an Edit of its own — it lands on the
+    // same "not undoable yet" side of the line as the reveal ladder itself.
+    history.reset(next);
     clearHint();
   };
 
   // --- screenshot import --------------------------------------------------
   /** Put an already-parsed reading onto the board. Shared with the share target. */
   const applyParsed = (data: { board: { cells: WireCell[] } }) => {
-    setCells(fromWire(data.board.cells));
+    replaceBoard(fromWire(data.board.cells));
     clearHint();
     const low = data.board.cells.filter((c) => c.low_confidence).length;
     setDropStatus(
@@ -303,13 +336,18 @@ function SudokuPanel({ active }: { active: boolean }) {
     }
   };
 
-  /** Adopt a screenshot the share target has already read. */
-  useEffect(
-    () =>
-      onSharedReading("sudoku", (data: SharedReading) =>
-        applyParsed(data as { board: { cells: WireCell[] } }),
-      ),
-    [],
+  /**
+   * Adopt a screenshot the share target has already read.
+   *
+   * Re-subscribed every render, not just on mount: `applyParsed` now records
+   * the board it is replacing as the prior half of a `BoardEdit` (issue #50),
+   * so the handler must close over the current `cells`, not whichever board
+   * was current the one time an empty dependency array would have run this.
+   */
+  useEffect(() =>
+    onSharedReading("sudoku", (data: SharedReading) =>
+      applyParsed(data as { board: { cells: WireCell[] } }),
+    ),
   );
 
   // --- rendering ----------------------------------------------------------
@@ -424,7 +462,7 @@ function SudokuPanel({ active }: { active: boolean }) {
               id="clear"
               type="button"
               onClick={() => {
-                setCells(emptyBoard());
+                replaceBoard(emptyBoard());
                 clearHint();
                 setResult(null);
               }}

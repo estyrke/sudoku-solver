@@ -21,11 +21,12 @@ export interface UseHistory<S, E extends Edit<S> = Edit<S>> {
   state: S;
   /**
    * Replace the state and discard the History — for an action that replaces
-   * the whole board rather than one part of it, and isn't an Edit of its own
-   * yet (Solve, Clear board, a screenshot import; see issue #50). Keeping the
-   * old History around would be worse than dropping it: its Edits address
-   * cells of a board this call is throwing away, and redoing one would splice
-   * a stale value onto whatever replaced it.
+   * the whole board rather than one part of it and isn't an Edit of its own
+   * yet (applying a hint step; see issue #50, which made Solve, Clear board
+   * and a screenshot import each a single Edit instead of a call to this).
+   * Keeping the old History around would be worse than dropping it: its
+   * Edits address cells of a board this call is throwing away, and redoing
+   * one would splice a stale value onto whatever replaced it.
    */
   reset(state: S): void;
   record(edit: E): void;
