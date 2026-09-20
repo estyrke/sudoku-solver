@@ -181,7 +181,9 @@ directly — the board models, Sudoku's Cages, each technique catalogue and its
 escalation order, `findHint`, `solve` and the mistake audit — with no jsdom and no
 build step, since Node runs `.ts` source straight, stripping types as it goes. It's
 where the Python engine tests were ported assertion-for-assertion as the engine moved
-into the browser.
+into the browser. It also covers `web/ui/history.ts`, the shell's undo/redo core: it's
+tab-agnostic rather than an engine, but shares the same no-jsdom, no-dependencies seam,
+because that is precisely what its own design requires of it (see ADR 0005).
 
 `tests/reader/` is the parity gate. It runs the reader against the committed fixture
 screenshots and compares each result to the board committed beside it — every value,
