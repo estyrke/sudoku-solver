@@ -63,15 +63,10 @@ function QueensPanel(_: { active: boolean }) {
   const [hint, setHint] = useState<HintView>(NO_HINT);
   const [result, setResult] = useState<{ text: string; warn?: boolean } | null>(null);
 
-  const painting = useRef(false);
+  /** The cells an in-flight paint drag has covered, not yet on the board. */
+  const [pendingPaint, setPendingPaint] = useState<ReadonlySet<number> | null>(null);
   /** A single click waiting to see whether a dblclick follows it. */
   const pendingClick = useRef<number | null>(null);
-
-  useEffect(() => {
-    const up = () => (painting.current = false);
-    window.addEventListener("mouseup", up);
-    return () => window.removeEventListener("mouseup", up);
-  }, []);
 
   const clearHint = () => {
     setReveal(null);
@@ -89,12 +84,50 @@ function QueensPanel(_: { active: boolean }) {
     });
 
   // --- painting -----------------------------------------------------------
-  const paintCell = (i: number) => {
+  // A drag is one act of painting. The cells the pointer covers are held aside
+  // and written to the board in a single commit when it comes up, rather than one
+  // Edit per cell entered, so that a twenty-cell paint undoes as one (issue #48).
+  // Killer commits a painted cage the same way. The cells show the paint as the
+  // pointer crosses them either way — see `shownRegion` — so the drag looks to
+  // the player exactly as it always has.
+  const beginPaint = (i: number) => {
     if (tool !== "paint") return;
-    if (cells[i].region === activeRegion) return;
-    setCell(i, (cell) => ({ ...cell, region: activeRegion }));
+    // A mousedown with a drag still open means its release went astray: the
+    // pointer left the window, where no mouseup reaches us. Commit what that
+    // drag covered rather than fold it into the one starting now.
+    commitPaint();
+    setPendingPaint(new Set([i]));
+  };
+
+  const extendPaint = (i: number) =>
+    setPendingPaint((current) => (!current || current.has(i) ? current : new Set(current).add(i)));
+
+  const commitPaint = () => {
+    if (!pendingPaint) return;
+    const painted = [...pendingPaint].filter((i) => cells[i].region !== activeRegion);
+    setPendingPaint(null);
+    if (painted.length === 0) return;
+    setCells((current) => {
+      const next = current.slice();
+      for (const i of painted) next[i] = { ...next[i], region: activeRegion };
+      return next;
+    });
     clearHint();
   };
+
+  /** Drop an in-flight drag unpainted, because the board it addressed is gone. */
+  const abandonPaint = () => setPendingPaint(null);
+
+  // Re-registered every render on purpose (no dependency list): a drag ends on
+  // the window, not on a cell, and the handler has to see the cells the drag has
+  // covered rather than the ones it started with.
+  useEffect(() => {
+    window.addEventListener("mouseup", commitPaint);
+    return () => window.removeEventListener("mouseup", commitPaint);
+  });
+
+  /** The region a cell shows: the one being painted onto it, else its own. */
+  const shownRegion = (i: number) => (pendingPaint?.has(i) ? activeRegion : cells[i].region);
 
   // --- mark/queen gestures ------------------------------------------------
   const cancelPendingClick = () => {
@@ -134,6 +167,10 @@ function QueensPanel(_: { active: boolean }) {
     setTool("cursor");
     setResult(null);
     clearHint();
+    // A drag whose release fell outside the window is still open, and holds
+    // indices into the board being thrown away here — which at a smaller N do
+    // not address a cell at all.
+    abandonPaint();
   };
 
   const newBoard = () => {
@@ -149,6 +186,7 @@ function QueensPanel(_: { active: boolean }) {
     const maxRegion = loaded.reduce((m, c) => Math.max(m, c.region ?? -1), -1);
     setRegionCount((count) => Math.max(count, maxRegion + 1));
     clearHint();
+    abandonPaint(); // same as resetTo: this board replaces the one a drag addressed
   };
 
   // --- solve --------------------------------------------------------------
@@ -317,16 +355,11 @@ function QueensPanel(_: { active: boolean }) {
             cellClass={(r, c) => "qcell" + (targets.has(r * n + c) ? " target" : "")}
             cellProps={(r, c) => {
               const i = r * n + c;
+              const region = shownRegion(i);
               return {
-                style: {
-                  background: cells[i].region === null ? "" : colorForRegion(cells[i].region!),
-                },
-                onMouseDown: () => {
-                  if (tool !== "paint") return;
-                  painting.current = true;
-                  paintCell(i);
-                },
-                onMouseEnter: () => painting.current && paintCell(i),
+                style: { background: region === null ? "" : colorForRegion(region) },
+                onMouseDown: () => beginPaint(i),
+                onMouseEnter: () => extendPaint(i),
                 onClick: () => onCellClick(i),
                 onDblClick: () => onCellDblClick(i),
               };
