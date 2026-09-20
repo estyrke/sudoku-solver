@@ -22,6 +22,8 @@ import { readClassicBoard } from "./reader/read-board.ts";
 import { Board } from "./sudoku/model.ts";
 import { findHint, hintToWire, nudge, type WireHint } from "./sudoku/hint.ts";
 import { solve } from "./sudoku/solver.ts";
+import { useHistory } from "./ui/use-history.ts";
+import type { Edit } from "./ui/history.ts";
 
 const N = 9;
 const idx = (r: number, c: number) => r * N + c;
@@ -75,8 +77,38 @@ const fromWire = (wire: WireCell[]): Cell[] =>
     low_confidence: !!c.low_confidence,
   }));
 
+/** Entering a digit, toggling a Pencil mark or clearing a Cell: one Cell set
+ *  from its prior state to its new one, undoable on its own (issue #49). */
+interface CellEdit extends Edit<Cell[]> {
+  index: number;
+}
+
+const cellEdit = (index: number, before: Cell, after: Cell): CellEdit => ({
+  index,
+  apply: (cells) => {
+    const next = cells.slice();
+    next[index] = after;
+    return next;
+  },
+  invert: (cells) => {
+    const next = cells.slice();
+    next[index] = before;
+    return next;
+  },
+});
+
+const sameCell = (a: Cell, b: Cell) =>
+  a === b ||
+  (a.value === b.value &&
+    a.is_given === b.is_given &&
+    a.low_confidence === b.low_confidence &&
+    a.pencil_marks.length === b.pencil_marks.length &&
+    a.pencil_marks.every((m, i) => m === b.pencil_marks[i]));
+
 function SudokuPanel({ active }: { active: boolean }) {
-  const [cells, setCells] = useState(emptyBoard);
+  const history = useHistory<Cell[], CellEdit>(emptyBoard());
+  const cells = history.state;
+  const setCells = history.reset; // whole-board replacements not yet Edits of their own — issue #50
   const [selected, setSelected] = useState(0);
   const [mode, setMode] = useState<"pen" | "pencil">("pen");
   const [reveal, setReveal] = useState<Reveal | null>(null);
@@ -91,13 +123,28 @@ function SudokuPanel({ active }: { active: boolean }) {
   }, []);
 
   // --- editing ------------------------------------------------------------
+  // Entering a digit, toggling a Pencil mark and clearing a Cell are each a
+  // single undoable Edit (issue #49) — one Cell set from its prior state to
+  // its new one. A change that leaves the Cell exactly as it was (pencilling
+  // an already-valued Cell, clearing an already-empty one) records nothing.
   const editCell = (i: number, change: (cell: Cell) => Cell) => {
-    setCells((current) => {
-      if (current[i].is_given) return current; // don't overwrite givens
-      const next = current.slice();
-      next[i] = change(current[i]);
-      return next;
-    });
+    const before = cells[i];
+    if (before.is_given) return; // don't overwrite givens
+    const after = change(before);
+    if (sameCell(before, after)) return;
+    history.record(cellEdit(i, before, after));
+    clearHint();
+  };
+
+  const doUndo = () => {
+    const edit = history.undo();
+    if (!edit) return;
+    clearHint();
+    select(edit.index); // see what moved
+  };
+
+  const doRedo = () => {
+    if (!history.redo()) return;
     clearHint();
   };
 
@@ -136,7 +183,10 @@ function SudokuPanel({ active }: { active: boolean }) {
       else if (e.key === "ArrowRight") select(idx(r, (c + 1) % N));
       else if (e.key === "p") setMode("pencil");
       else if (e.key === "n") setMode("pen");
-      else return;
+      else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        if (e.shiftKey) doRedo();
+        else doUndo();
+      } else return;
       e.preventDefault();
     };
     document.addEventListener("keydown", onKeydown);
@@ -152,9 +202,7 @@ function SudokuPanel({ active }: { active: boolean }) {
       return;
     }
     const wire = solved.toWire();
-    setCells((current) =>
-      current.map((cell, i) => ({ ...cell, value: wire.cells[i].value, pencil_marks: [] })),
-    );
+    setCells(cells.map((cell, i) => ({ ...cell, value: wire.cells[i].value, pencil_marks: [] })));
     setResult("Solved.");
     clearHint();
   };
@@ -207,22 +255,20 @@ function SudokuPanel({ active }: { active: boolean }) {
   const applyStep = () => {
     if (!reveal) return;
     const h = reveal.hint;
-    setCells((current) => {
-      const next = current.slice();
-      if (h.action === "place") {
-        const { r, c } = h.cells[0];
-        next[idx(r, c)] = { ...next[idx(r, c)], value: h.digits[0], pencil_marks: [] };
-      } else {
-        for (const { r, c } of h.cells) {
-          const cell = next[idx(r, c)];
-          next[idx(r, c)] = {
-            ...cell,
-            pencil_marks: cell.pencil_marks.filter((m) => !h.digits.includes(m)),
-          };
-        }
+    const next = cells.slice();
+    if (h.action === "place") {
+      const { r, c } = h.cells[0];
+      next[idx(r, c)] = { ...next[idx(r, c)], value: h.digits[0], pencil_marks: [] };
+    } else {
+      for (const { r, c } of h.cells) {
+        const cell = next[idx(r, c)];
+        next[idx(r, c)] = {
+          ...cell,
+          pencil_marks: cell.pencil_marks.filter((m) => !h.digits.includes(m)),
+        };
       }
-      return next;
-    });
+    }
+    setCells(next);
     clearHint();
   };
 
@@ -359,6 +405,12 @@ function SudokuPanel({ active }: { active: boolean }) {
           />
 
           <div class="actions">
+            <button id="undo" type="button" disabled={!history.canUndo} onClick={doUndo}>
+              Undo
+            </button>
+            <button id="redo" type="button" disabled={!history.canRedo} onClick={doRedo}>
+              Redo
+            </button>
             <button id="getHint" type="button" class="primary" onClick={getHint}>
               Get hint
             </button>
