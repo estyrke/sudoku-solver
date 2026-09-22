@@ -13,10 +13,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { Board, Cage, type WireBoard } from "../../web/sudoku/model.ts";
+import { Board, Cage, cellName, rc, type Coord, type WireBoard } from "../../web/sudoku/model.ts";
 import { audit } from "../../web/sudoku/audit.ts";
 import { solutions } from "../../web/sudoku/solver.ts";
-import { applyToCandidates, findHint, workingCandidates } from "../../web/sudoku/hint.ts";
+import {
+  applyToCandidates,
+  derivedCandidates,
+  findHint,
+  solveWithTechniques,
+  workingCandidates,
+} from "../../web/sudoku/hint.ts";
 
 const FIXTURE3 = path.join(
   import.meta.dirname,
@@ -110,6 +116,106 @@ test("a cell with no marks at all is not a missing mark", () => {
   const board = killerBoard();
   board.cell(0, 0).pencilMarks.clear();
   assert.ok(audit(board).clean);
+});
+
+// Telling an exhausted catalogue apart from an elimination it can't justify
+// (issue #60). Classic, cage-less, and known (per the issue) to run exactly
+// two Pointing pair/triple eliminations from `derivedCandidates` — removing 7
+// from r3c9 and 5 from r7c2 — before the catalogue stalls.
+const REFERENCE =
+  "635008000028307060000000380700800143842731956301000278003900004080073090010500030";
+
+/** The fixed point the catalogue reaches on `REFERENCE`, blind to marks. */
+function referenceCatalogue(): { board: Board; catalogue: ReturnType<typeof derivedCandidates> } {
+  const board = Board.fromString(REFERENCE);
+  const catalogue = derivedCandidates(board);
+  const run = solveWithTechniques(board, catalogue);
+  assert.equal(run.steps.length, 2);
+  assert.ok(run.steps.every((step) => step.technique === "Pointing pair/triple"));
+  return { board, catalogue };
+}
+
+/** Copy a Candidate grid onto a board's own Pencil marks, cell by cell. */
+function pencilFrom(board: Board, cg: ReturnType<typeof derivedCandidates>): void {
+  for (const [i, digits] of cg) {
+    const [r, c] = rc(i);
+    board.cell(r, c).pencilMarks = new Set(digits);
+  }
+}
+
+test("the reference board audits ok, not exhausted, when the player is merely behind", () => {
+  // No marks pencilled at all: `workingCandidates` falls back to the full
+  // legal set, a superset of what the catalogue narrowed down to. Being
+  // behind the catalogue is normal, not a finding.
+  const { board } = referenceCatalogue();
+  const report = audit(board);
+  assert.equal(report.verdict, "ok");
+  assert.ok(report.clean);
+});
+
+test("the reference board audits catalogue-exhausted when marks match the catalogue exactly", () => {
+  // This is the board the issue was filed over: the marks in the screenshot
+  // are exactly the catalogue's own fixed point, and a naive "narrower than
+  // legal" check would have misfired on the two Pointing pair cells.
+  const { board, catalogue } = referenceCatalogue();
+  pencilFrom(board, catalogue);
+  assert.equal(findHint(board), null);
+
+  const report = audit(board);
+  assert.equal(report.verdict, "catalogue-exhausted");
+  assert.ok(report.clean, "no mistake was found, so nothing should block Solve");
+  assert.deepEqual(report.cells, []);
+});
+
+test("a mark rubbed out beyond what the catalogue can justify names the cell, not the digit", () => {
+  const { board, catalogue } = referenceCatalogue();
+  pencilFrom(board, catalogue);
+  const answer = solutions(board, 1)[0];
+
+  // Find a cell with a spare candidate that isn't the solution's own digit —
+  // rubbing that one out is sound only if the player reasoned it out by hand,
+  // which the catalogue here cannot reproduce. Skip any digit that would
+  // coincide with a digit in the cell's own name (e.g. r1c4), so the "not the
+  // digit" assertion below can't pass by accident.
+  let target: Coord | null = null;
+  let extra: number | null = null;
+  for (const [i, digits] of catalogue) {
+    const [r, c] = rc(i);
+    const ans = answer.value(r, c)!;
+    const name = cellName(r, c);
+    const spare = [...digits].find((d) => d !== ans && !name.includes(String(d)));
+    if (spare !== undefined) {
+      target = [r, c];
+      extra = spare;
+      break;
+    }
+  }
+  assert.ok(target && extra !== null, "the fixture needs at least one cell with a spare candidate");
+  board.cell(target![0], target![1]).pencilMarks.delete(extra!);
+
+  const report = audit(board);
+  assert.equal(report.verdict, "unjustified-mark");
+  assert.ok(report.clean, "unaccounted for, not proven wrong — must not block Solve");
+  assert.deepEqual(report.cells, [target]);
+  assert.match(report.message, new RegExp(cellName(...target!)));
+  assert.doesNotMatch(report.message, new RegExp(String(extra)));
+});
+
+test("missing-mark still takes precedence over unjustified-mark", () => {
+  // Rubbing out the solution's own digit is the more specific, more dangerous
+  // finding (issue #60's third state), and must win even once the exhausted-
+  // catalogue check exists alongside it.
+  const { board, catalogue } = referenceCatalogue();
+  pencilFrom(board, catalogue);
+  const answer = solutions(board, 1)[0];
+
+  const [i] = [...catalogue.keys()];
+  const [r, c] = rc(i);
+  board.cell(r, c).pencilMarks.delete(answer.value(r, c)!);
+
+  const report = audit(board);
+  assert.equal(report.verdict, "missing-mark");
+  assert.deepEqual(report.cells, [[r, c]]);
 });
 
 test("a misread cage sum is caught by arithmetic, not search", () => {

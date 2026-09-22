@@ -116,12 +116,16 @@ describe("sudoku audit markers", () => {
 
   it("says so plainly when the board is clean but nothing applies", () => {
     // The one case where "no hint" is the honest answer rather than a hidden
-    // mistake.
+    // mistake — and, since Easter Monster is never pencilled here, the
+    // player's (empty) marks trivially match what the catalogue itself
+    // derives, so the audit can tell this apart from a rubbed-out mark it
+    // can't account for (issue #60).
     fill(EASTER_MONSTER);
 
     click("#getHint");
 
-    assert.match(shown(), /more advanced strategy than is implemented yet/);
+    assert.match(shown(), /technique catalogue would derive on its own/);
+    assert.match(shown(), /isn't implemented yet/);
     assert.ok(panel.querySelector("#reveal").hidden);
     assert.equal(marked(), 0);
   });

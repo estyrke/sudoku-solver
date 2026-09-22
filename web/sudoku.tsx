@@ -288,9 +288,15 @@ function SudokuPanel({ active }: { active: boolean }) {
 
     const found = findHint(board);
     if (found === null) {
+      // "catalogue-exhausted" and "unjustified-mark" are the audit's own
+      // words for this exact silence — more specific than the generic
+      // fallback, and worth showing instead of it. Passed without a report
+      // so mistakes stay clear: both verdicts are clean.
       refuse(
-        "No technique in the current set applies. The board may need a " +
-          "more advanced strategy than is implemented yet.",
+        report.verdict === "catalogue-exhausted" || report.verdict === "unjustified-mark"
+          ? report.message
+          : "No technique in the current set applies. The board may need a " +
+              "more advanced strategy than is implemented yet.",
       );
       return;
     }

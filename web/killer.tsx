@@ -417,8 +417,14 @@ function KillerPanel({ active }: { active: boolean }) {
 
     const found = findHint(board);
     if (found === null) {
+      // "catalogue-exhausted" and "unjustified-mark" are the audit's own
+      // words for this exact silence — more specific than the generic
+      // fallback, and worth showing instead of it. Passed without a report
+      // so mistakes stay clear: both verdicts are clean.
       refuse(
-        "No mistakes on the board — this one needs a technique that isn't implemented yet.",
+        report.verdict === "catalogue-exhausted" || report.verdict === "unjustified-mark"
+          ? report.message
+          : "No mistakes on the board — this one needs a technique that isn't implemented yet.",
       );
       return;
     }

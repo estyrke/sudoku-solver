@@ -21,17 +21,43 @@
 // digit absent from one solution may be needed by another, so that check is
 // skipped.
 //
+// A fourth pair of states looks identical to each other rather than to a
+// mistake: `findHint` returning `null` on an otherwise clean board (`catalogueCheck`).
+// Either the catalogue is genuinely out of technique, or the player rubbed out
+// a mark that wasn't the answer — sound by the missing-mark check above, but
+// not something the catalogue can vouch for. Telling them apart means running
+// `solveWithTechniques` from `derivedCandidates` (blind to marks, replayed to
+// its own fixed point) and comparing it against the player's marks: equal
+// means the catalogue is exhausted; narrower in some cell means an
+// unaccountable elimination; a superset just means the player is behind, and
+// isn't a finding at all.
+//
 // Naming policy: a wrong entry is the player's own and gets named outright. A
-// missing mark names the cell but never the digit — the digit *is* the answer
-// for that cell, and a hint engine that blurts it out has stopped being one.
+// missing mark, or an unjustified one, names the cell but never the digit —
+// the digit may *be* the answer for that cell, and a hint engine that blurts
+// it out has stopped being one.
 
 import { Board, DIGITS, N, cellName, rc, type Coord } from "./model.ts";
 import { solutions } from "./solver.ts";
+import { derivedCandidates, findHint, solveWithTechniques, workingCandidates } from "./hint.ts";
+import type { CandGrid } from "./techniques.ts";
 
 /** 405: nine units of 1-9, partitioned into cages. */
 const FULL_TOTAL = DIGITS.reduce((a, b) => a + b, 0) * N;
 
-export type Verdict = "ok" | "incomplete" | "wrong-cage" | "wrong-value" | "missing-mark" | "ambiguous";
+export type Verdict =
+  | "ok"
+  | "incomplete"
+  | "wrong-cage"
+  | "wrong-value"
+  | "missing-mark"
+  | "unjustified-mark"
+  | "catalogue-exhausted"
+  | "ambiguous";
+
+/** Verdicts below mean "no mistake found" — they must never raise a mistake
+ * marker or block a Solve, even though they have something to say. */
+const CLEAN_VERDICTS: ReadonlySet<Verdict> = new Set(["ok", "unjustified-mark", "catalogue-exhausted"]);
 
 /** What is wrong with the board, if anything. `cells` are the ones to look at. */
 export interface Audit {
@@ -57,7 +83,7 @@ export function auditToWire(report: Audit): WireAudit {
 }
 
 function report(verdict: Verdict, cells: Coord[], message: string): Audit {
-  return { verdict, cells, message, clean: verdict === "ok" };
+  return { verdict, cells, message, clean: CLEAN_VERDICTS.has(verdict) };
 }
 
 function placed(board: Board): Coord[] {
@@ -106,7 +132,66 @@ function checksumOff(board: Board): Audit | null {
   );
 }
 
-/** Diagnose the board. Cheap enough to run before every hint. */
+/**
+ * Whether the technique catalogue can reproduce the player's Pencil marks.
+ *
+ * Runs the catalogue from `derivedCandidates`, blind to marks, to the same
+ * fixed point `findHint` would stall at — eliminations replayed, not the raw
+ * legal Candidates, so a reduction the player already made by hand (Pointing
+ * pair, say) doesn't misread as a mark they can't account for.
+ *
+ * `null` when there's nothing to say: the player is either ahead of the
+ * catalogue for some cells (extra marks it hasn't eliminated yet — merely
+ * behind, not a finding) or the comparison doesn't apply.
+ */
+function catalogueCheck(board: Board): Audit | null {
+  const catalogue: CandGrid = derivedCandidates(board);
+  solveWithTechniques(board, catalogue);
+  const working = workingCandidates(board);
+
+  const narrower: Coord[] = [];
+  let reproducible = true;
+  for (const [i, catSet] of catalogue) {
+    const marks = working.get(i);
+    if (!marks) continue;
+    let missing = false;
+    for (const d of catSet) if (!marks.has(d)) missing = true;
+    if (missing) narrower.push(rc(i));
+    if (missing || marks.size !== catSet.size) reproducible = false;
+  }
+
+  if (narrower.length > 0) {
+    return report(
+      "unjustified-mark",
+      narrower,
+      `${names(narrower)} ${narrower.length === 1 ? "has" : "have"} fewer ` +
+        `pencil marks than the technique catalogue can justify from the ` +
+        `board alone. That can be sound — a deduction you made by hand that ` +
+        `the catalogue also reaches — but it can't be reproduced here, so ` +
+        `anything built on ${narrower.length === 1 ? "it" : "them"} since is ` +
+        `worth a second look. (Not saying which digit.)`,
+    );
+  }
+
+  if (reproducible && findHint(board) === null) {
+    return report(
+      "catalogue-exhausted",
+      [],
+      "No mistakes, and the pencil marks are exactly what the technique " +
+        "catalogue would derive on its own — this isn't a mark you're " +
+        "missing. If there's a way forward from here, it needs a strategy " +
+        "that isn't implemented yet.",
+    );
+  }
+
+  return null;
+}
+
+/**
+ * Diagnose the board. Cheap enough to run before every hint, except for
+ * `catalogueCheck` on the way to an "ok": that replays the whole catalogue once
+ * from `derivedCandidates`, which is search-free but not free.
+ */
 export function audit(board: Board): Audit {
   if (board.cages.length > 0 && !board.isFullyCaged()) {
     // Mid-way through drawing the cages, every verdict below would be an
@@ -194,6 +279,9 @@ export function audit(board: Board): Audit {
         `(Not saying which digit: that would be the answer.)`,
     );
   }
+
+  const marks = catalogueCheck(board);
+  if (marks !== null) return marks;
 
   return report("ok", [], "No mistakes found — the board is consistent.");
 }
