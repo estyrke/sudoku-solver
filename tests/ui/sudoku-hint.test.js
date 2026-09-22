@@ -124,15 +124,21 @@ describe("sudoku hint", () => {
     assert.equal(shown(), "This board is already solved. 🎉");
   });
 
-  it("says so honestly when nothing implemented applies", () => {
-    // An empty board is valid, unsolved, and gives every technique nothing to
-    // bite on: every cell holds all nine candidates.
+  it("says the board is ambiguous rather than blaming a missing technique", () => {
+    // An empty board is valid and unsolved, but now that the board is audited
+    // before it is hinted (issue #59), it never reaches findHint: an empty
+    // grid has many solutions, so the audit calls it ambiguous first — an
+    // honest answer in its own right, and a more useful one than "no
+    // technique applies". tests/ui/sudoku-audit-markers.test.js covers the
+    // "genuinely nothing implemented applies" case on a board with one
+    // solution.
     click("#getHint");
 
     assert.equal(
       shown(),
-      "No technique in the current set applies. The board may need a " +
-        "more advanced strategy than is implemented yet."
+      "This board has more than one solution, so there isn't enough on it " +
+        "to determine one answer. Until that's fixed a hint may point " +
+        "somewhere the puzzle doesn't actually go."
     );
     assert.ok(panel.querySelector("#reveal").hidden);
   });

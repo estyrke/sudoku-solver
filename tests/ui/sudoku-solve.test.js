@@ -69,7 +69,10 @@ describe("sudoku solve", () => {
     assert.equal(shownValues(), SOLUTION);
   });
 
-  it("reports no solution in the same words as the old server endpoint", () => {
+  it("reports the audit's message rather than a generic no-solution notice", () => {
+    // issue #59: an unsolvable board is audited, so Solve names the wrong
+    // entry instead of leaving the player to guess (killer.tsx's doSolve
+    // does the same).
     ui.fire(panel.querySelector("#clear"), "click");
     enter(0, 0, 5);
     enter(0, 1, 5); // two 5s in row 1: unsolvable
@@ -79,7 +82,8 @@ describe("sudoku solve", () => {
     assert.equal(calls.length, 0);
     assert.equal(
       ui.document.getElementById("result").textContent,
-      "No solution exists for this board."
+      "One of r1c1, r1c2 is wrong: clearing any one of them on its own makes " +
+        "the board solvable again, so they can't all be right.",
     );
   });
 });

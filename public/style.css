@@ -106,6 +106,10 @@ h1 { margin: 0 0 2px; font-size: 24px; }
 .cell.peer { background: var(--peer); }
 .cell.target { background: var(--target); }
 .cell.low { box-shadow: inset 0 0 0 2px #e57373; }
+/* Cells the audit says are wrong — a mistake, not a hint, so it reads as an
+   error rather than a suggestion. Shared with the Killer board: every .kcell
+   is also a .cell (see killer.tsx's cellClass). */
+.cell.mistake { background: #fdecea; box-shadow: inset 0 0 0 3px #c62828; }
 
 .val { font-size: 28px; line-height: 1; }
 .val.given { color: var(--given); font-weight: 700; }
@@ -285,10 +289,6 @@ button:disabled { opacity: .5; cursor: default; }
    rules out. Outlined rather than filled: a cage-selected cell already uses the
    target fill, and the two must not be confusable. */
 .kcell.target { box-shadow: inset 0 0 0 3px var(--accent); }
-
-/* Cells the audit says are wrong — a mistake, not a hint, so it reads as an
-   alarm rather than a pointer. */
-.kcell.mistake { background: #fdecea; box-shadow: inset 0 0 0 3px #c62828; }
 
 #kStatus.error { color: #c62828; }
 .kcell.cage-unsure { background: #fff3cd; box-shadow: inset 0 0 0 2px #e0a800; }

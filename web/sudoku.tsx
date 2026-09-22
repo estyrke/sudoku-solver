@@ -20,6 +20,7 @@ import { onSharedReading, type SharedReading } from "./ui/shared-reading.ts";
 import { decodeImageFile } from "./reader/decode.ts";
 import { readClassicBoard } from "./reader/read-board.ts";
 import { Board } from "./sudoku/model.ts";
+import { audit, auditToWire, type WireAudit } from "./sudoku/audit.ts";
 import { findHint, hintToWire, nudge, type WireHint } from "./sudoku/hint.ts";
 import { solve } from "./sudoku/solver.ts";
 import { useHistory } from "./ui/use-history.ts";
@@ -144,6 +145,8 @@ function SudokuPanel({ active }: { active: boolean }) {
   const [mode, setMode] = useState<"pen" | "pencil">("pen");
   const [reveal, setReveal] = useState<Reveal | null>(null);
   const [hint, setHint] = useState<HintView>(NO_HINT);
+  /** Indices the last audit called wrong. */
+  const [mistakes, setMistakes] = useState<number[]>([]);
   const [result, setResult] = useState<string | null>(null);
   const [dropStatus, setDropStatus] = useState("");
   const boardRef = useRef<HTMLElement | null>(null);
@@ -151,6 +154,7 @@ function SudokuPanel({ active }: { active: boolean }) {
   const clearHint = useCallback(() => {
     setReveal(null);
     setHint(NO_HINT);
+    setMistakes([]);
   }, []);
 
   // --- editing ------------------------------------------------------------
@@ -226,10 +230,15 @@ function SudokuPanel({ active }: { active: boolean }) {
 
   // --- solving ------------------------------------------------------------
   // Runs entirely in the browser: no /solve request (see web/sudoku/solver.ts).
+  //
+  // An unsolvable board is audited rather than given a generic "no solution"
+  // message, so it names the wrong entry instead of leaving the player to
+  // guess (killer.tsx's doSolve does the same).
   const doSolve = () => {
-    const solved = solve(Board.fromWire(toWire(cells)));
+    const board = Board.fromWire(toWire(cells));
+    const solved = solve(board);
     if (!solved) {
-      setResult("No solution exists for this board.");
+      setResult(audit(board).message);
       return;
     }
     const wire = solved.toWire();
@@ -244,13 +253,22 @@ function SudokuPanel({ active }: { active: boolean }) {
    *
    * The refusals are worded exactly as the deleted `/hint` endpoint worded
    * them, and are checked in the same order: an invalid board first, then a
-   * solved one, then a board no implemented technique can speak to.
+   * solved one, then the audit, then a board no implemented technique can
+   * speak to. The board is audited before it is hinted — same as
+   * killer.tsx's doHint, and for the same reason: a hint deduced from a wrong
+   * entry, or in a world where a needed pencil mark has been rubbed out, is
+   * worse than no hint because it looks authoritative and sends the player
+   * further off. "incomplete" is Killer-only (cages still being drawn) and
+   * can't arise on a cage-less board, but skipping it costs nothing.
    */
   const getHint = () => {
     const board = Board.fromWire(toWire(cells));
-    const refuse = (reason: string) => {
+    const refuse = (reason: string, report?: WireAudit) => {
       setReveal(null);
       setHint({ kind: "message", text: reason, warn: true });
+      // A mistake report names cells; point at them the way a hint does, since
+      // "r1c1 is wrong" is only useful once you've found r1c1.
+      setMistakes((report?.cells ?? []).map((m) => idx(m.r, m.c)));
     };
 
     if (!board.isValid()) {
@@ -261,6 +279,13 @@ function SudokuPanel({ active }: { active: boolean }) {
       refuse("This board is already solved. 🎉");
       return;
     }
+
+    const report = audit(board);
+    if (!report.clean && report.verdict !== "incomplete") {
+      refuse(report.message, auditToWire(report));
+      return;
+    }
+
     const found = findHint(board);
     if (found === null) {
       refuse(
@@ -269,6 +294,7 @@ function SudokuPanel({ active }: { active: boolean }) {
       );
       return;
     }
+    setMistakes([]);
     showReveal({ nudge: nudge(found), hint: hintToWire(found), level: 1 });
   };
 
@@ -372,7 +398,8 @@ function SudokuPanel({ active }: { active: boolean }) {
       (i === selected ? " sel" : "") +
       (peer && !target ? " peer" : "") +
       (target ? " target" : "") +
-      (cell.low_confidence ? " low" : "")
+      (cell.low_confidence ? " low" : "") +
+      (mistakes.includes(i) ? " mistake" : "")
     );
   };
 

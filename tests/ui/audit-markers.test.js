@@ -39,23 +39,6 @@ const reading = (board) => ({
   needs_review: false,
 });
 
-/** A cage-less board from an 81-character puzzle string, in reader wire shape. */
-const classic = (puzzle) => ({
-  cells: [...puzzle].map((ch) => ({
-    value: ch === "0" ? null : Number(ch),
-    is_given: ch !== "0",
-    pencil_marks: [],
-    low_confidence: false,
-  })),
-  cages: [],
-});
-
-// Easter Monster: one solution, and famously immune to everything short of
-// chain logic. Used below as a board the catalogue honestly cannot start on.
-const EASTER_MONSTER = classic(
-  "100000002090400050006000700050903000000070000000850040700000600030009080002000001",
-);
-
 // board3 is clean, fully caged and has exactly one solution: r1c1 is 6 and
 // r5c5 is 3, so any other legal digit there is a mistake no rule catches — the
 // board simply stops having an answer, which is what the audit is for.
@@ -124,25 +107,11 @@ describe("killer audit markers", () => {
     assert.equal(marked(), 0, "a hint and a mistake marker must never show together");
   });
 
-  it("says so plainly when the board is clean but nothing applies", async () => {
-    // The one case where "no hint" is the honest answer rather than a hidden
-    // mistake. This used to be one of the Killer fixtures, until the catalogue
-    // learned to enumerate cage and 45-rule combinations and started solving all
-    // of them outright. A cage-less classic stands in instead: Easter Monster
-    // has one solution, audits clean, and needs chain logic that nothing in
-    // TECHNIQUES attempts — and no amount of further Killer work will change
-    // that, which a fixture with cages on it could not promise.
-    ui.fire(ui.inPanel('[data-kmode="cages"]'), "click");
-    ui.window.PuzzleShell.get("killer").acceptShared(reading(EASTER_MONSTER));
-    await ui.flush();
-    assert.match(ui.inPanel("#kDropStatus").textContent, /^Read 0 cages\./);
-    ui.fire(ui.inPanel('[data-kmode="digits"]'), "click");
-    getHint();
-
-    assert.match(ui.hintEl.textContent, /needs a technique that isn't implemented yet/);
-    assert.ok(ui.revealEl.hidden);
-    assert.equal(marked(), 0);
-  });
+  // "says so plainly when the board is clean but nothing applies" used to live
+  // here, driving a cage-less classic board through this tab because the
+  // Killer tab was the only one that audited. Now that the Sudoku tab audits
+  // on its own terms (issue #59), that case has a proper home in
+  // tests/ui/sudoku-audit-markers.test.js instead.
 
   it("does not treat a board still being drawn as a mistake", () => {
     // Half-drawn cages make every verdict an artefact of the ones not there
