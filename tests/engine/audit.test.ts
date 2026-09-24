@@ -119,19 +119,28 @@ test("a cell with no marks at all is not a missing mark", () => {
 });
 
 // Telling an exhausted catalogue apart from an elimination it can't justify
-// (issue #60). Classic, cage-less, and known (per the issue) to run exactly
-// two Pointing pair/triple eliminations from `derivedCandidates` — removing 7
-// from r3c9 and 5 from r7c2 — before the catalogue stalls.
-const REFERENCE =
-  "635008000028307060000000380700800143842731956301000278003900004080073090010500030";
+// (issue #60). Classic, cage-less, one solution, and a board the whole
+// catalogue — chains included — takes some way and then stalls on. Issue #60
+// was filed over Sudoku #11462, which stalled after two Pointing steps; chains
+// (issue #61) now finish that one, so the stall these tests need lives here.
+const STALLS = readFileSync(
+  path.join(import.meta.dirname, "..", "fixtures", "classic_boards", "chains_stall.txt"),
+  "utf8",
+).trim();
 
-/** The fixed point the catalogue reaches on `REFERENCE`, blind to marks. */
-function referenceCatalogue(): { board: Board; catalogue: ReturnType<typeof derivedCandidates> } {
-  const board = Board.fromString(REFERENCE);
+/** The fixed point the catalogue reaches on `STALLS`, blind to marks — with
+ * the digits it placed on the way already written in, as a player following
+ * its hints would have them. */
+function stalledCatalogue(): { board: Board; catalogue: ReturnType<typeof derivedCandidates> } {
+  const start = Board.fromString(STALLS);
+  const { board, solved } = solveWithTechniques(start, derivedCandidates(start));
+  assert.ok(!solved, "the catalogue should stall on this board");
+  const filled = (b: Board) => b.toWire().cells.filter((c) => c.value !== null).length;
+  assert.ok(filled(board) > filled(start), "after getting somewhere first");
+
   const catalogue = derivedCandidates(board);
   const run = solveWithTechniques(board, catalogue);
-  assert.equal(run.steps.length, 2);
-  assert.ok(run.steps.every((step) => step.technique === "Pointing pair/triple"));
+  assert.ok(run.steps.length > 0 && run.steps.every((step) => step.action === "eliminate"));
   return { board, catalogue };
 }
 
@@ -143,21 +152,21 @@ function pencilFrom(board: Board, cg: ReturnType<typeof derivedCandidates>): voi
   }
 }
 
-test("the reference board audits ok, not exhausted, when the player is merely behind", () => {
+test("a stalled board audits ok, not exhausted, when the player is merely behind", () => {
   // No marks pencilled at all: `workingCandidates` falls back to the full
   // legal set, a superset of what the catalogue narrowed down to. Being
   // behind the catalogue is normal, not a finding.
-  const { board } = referenceCatalogue();
+  const { board } = stalledCatalogue();
   const report = audit(board);
   assert.equal(report.verdict, "ok");
   assert.ok(report.clean);
 });
 
-test("the reference board audits catalogue-exhausted when marks match the catalogue exactly", () => {
-  // This is the board the issue was filed over: the marks in the screenshot
-  // are exactly the catalogue's own fixed point, and a naive "narrower than
-  // legal" check would have misfired on the two Pointing pair cells.
-  const { board, catalogue } = referenceCatalogue();
+test("a stalled board audits catalogue-exhausted when marks match the catalogue exactly", () => {
+  // The shape of the board the issue was filed over: the marks are exactly the
+  // catalogue's own fixed point, and a naive "narrower than legal" check would
+  // misfire on every cell the catalogue narrowed.
+  const { board, catalogue } = stalledCatalogue();
   pencilFrom(board, catalogue);
   assert.equal(findHint(board), null);
 
@@ -168,7 +177,7 @@ test("the reference board audits catalogue-exhausted when marks match the catalo
 });
 
 test("a mark rubbed out beyond what the catalogue can justify names the cell, not the digit", () => {
-  const { board, catalogue } = referenceCatalogue();
+  const { board, catalogue } = stalledCatalogue();
   pencilFrom(board, catalogue);
   const answer = solutions(board, 1)[0];
 
@@ -205,7 +214,7 @@ test("missing-mark still takes precedence over unjustified-mark", () => {
   // Rubbing out the solution's own digit is the more specific, more dangerous
   // finding (issue #60's third state), and must win even once the exhausted-
   // catalogue check exists alongside it.
-  const { board, catalogue } = referenceCatalogue();
+  const { board, catalogue } = stalledCatalogue();
   pencilFrom(board, catalogue);
   const answer = solutions(board, 1)[0];
 

@@ -37,6 +37,10 @@ A single applicable technique's output: either a placement or one or more elimin
 Applying one is a single Edit, and undoes as one — see the shell's Language in `CONTEXT-MAP.md`.
 _Avoid_: Step, move
 
+**Chain**:
+A run of candidates joined by alternating links — *strong* (if this one is false, that one is true: a Cell with two candidates, or a digit with two places left in a Unit) and *weak* (they cannot both be true) — from a candidate assumed false to one inferred true, so at least one of the two ends holds. The catalogue's last resort; see `docs/adr/0007-sudoku-chains-are-one-general-search.md`.
+_Avoid_: Loop (a chain's ends need not meet), colouring, forcing chain (both name narrower or different arguments)
+
 ### Killer Sudoku
 
 Terms specific to the Killer variant. A board without any Cages is just classic Sudoku; these concepts are absent from it.

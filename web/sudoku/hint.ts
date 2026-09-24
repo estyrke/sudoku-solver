@@ -153,10 +153,15 @@ export function solveWithTechniques(board: Board, cg?: CandGrid): TechniqueRun {
 
 /** The gentlest reveal: which Unit or Cell to look at, without saying what to do.
  *
+ * A technique that knows better says so in `focus` — a chain's first Unit is
+ * one of several it crosses, and the Cell it clears is the last place to look,
+ * so a chain points at where its argument starts instead.
+ *
  * Presentation rather than deduction, which is why it sits here in the Sudoku
  * engine's own module and not in something shared — Queens keeps a separate
  * implementation of the same idea, per ADR 0001. */
 export function nudge(hint: Hint): string {
+  if (hint.focus !== undefined) return `Look at ${hint.focus}.`;
   if (hint.units.length > 0) return `Look at ${hint.units[0]}.`;
   const [r, c] = hint.cells[0];
   return `Look at ${cellName(r, c)}.`;

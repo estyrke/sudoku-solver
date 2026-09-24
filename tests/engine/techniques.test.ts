@@ -288,6 +288,7 @@ describe("escalation order", () => {
         "cagePointing",
         "xWing",
         "fortyFiveSets",
+        "chain",
       ],
     );
   });
@@ -1000,9 +1001,9 @@ describe("45-rule over several cells", () => {
     }
   });
 
-  it("is the last resort", () => {
+  it("is the last resort short of a chain", () => {
     const names = T.TECHNIQUES.map((t) => t.name);
-    assert.equal(names[names.length - 1], "fortyFiveSets");
+    assert.deepEqual(names.slice(-2), ["fortyFiveSets", "chain"]);
     assert.ok(names.indexOf("fortyFiveRule") < names.indexOf("fortyFiveSets"));
     assert.ok(names.indexOf("nakedPair") < names.indexOf("fortyFiveSets"));
   });
@@ -1145,11 +1146,13 @@ describe("a board that needs a wide 45-rule leftover", () => {
   });
 
   it("opens on the leftover the cell cap used to hide", () => {
+    // Chains come after it, and are no argument for skipping it — see
+    // board5's test above for why a harder road to the same place doesn't count.
     const board = fixture("puzzle_page_killer_board6");
-    const others = T.TECHNIQUES.filter((t) => t.name !== "fortyFiveSets");
+    const others = T.TECHNIQUES.filter((t) => t.name !== "fortyFiveSets" && t.name !== "chain");
     const stalled = workingCandidates(board);
     const hint = others.reduce<T.Hint | null>((found, t) => found ?? t(board, stalled), null);
-    assert.equal(hint, null, "expected every other technique to stall on the first hint");
+    assert.equal(hint, null, "expected every simpler technique to stall on the first hint");
 
     const first = findHint(board, workingCandidates(board));
     assert.equal(first?.technique, "45-rule (outie set)");

@@ -41,6 +41,9 @@ export interface Hint {
   digits: number[];
   units: string[];
   explanation: string;
+  /** Where the gentlest reveal should point, when the first of `units` isn't it
+   * — `the 1s in column 8`, `r3c5`. See `nudge` in hint.ts. */
+  focus?: string;
 }
 
 // --- small helpers, mirroring the Python module's own -----------------------
@@ -94,18 +97,24 @@ function intersects(a: Set<number>, b: Set<number>): boolean {
 /** The placed `d` that makes it impossible at `cell`, and how it relates. */
 function ruledOutBy(board: Board, cell: Coord, d: number): [Coord, string] | null {
   const [r, c] = cell;
-  const cage = board.cageAt(r, c);
   // Peers come back as indices, so ascending index is Python's `sorted(peers)`
   // over coordinate tuples — the same cell is blamed either way.
   for (const p of sortNums(board.peers(r, c))) {
     const [pr, pc] = rc(p);
-    if (board.value(pr, pc) !== d) continue;
-    if (pr === r) return [[pr, pc], `row ${r + 1}`];
-    if (pc === c) return [[pr, pc], `column ${c + 1}`];
-    if (boxIndex(pr, pc) === boxIndex(r, c)) return [[pr, pc], `box ${boxIndex(r, c) + 1}`];
-    if (cage !== null && cage.indices.has(p)) return [[pr, pc], cageLabel(cage)];
+    if (board.value(pr, pc) === d) return [[pr, pc], sharedGroup(board, idx(r, c), p)];
   }
   return null;
+}
+
+/** What two Peers share, as the explanations name it: their row, column or box
+ * if they share one, and otherwise the Cage that makes them Peers. */
+function sharedGroup(board: Board, a: number, b: number): string {
+  const [ar, ac] = rc(a);
+  const [br, bc] = rc(b);
+  if (ar === br) return `row ${ar + 1}`;
+  if (ac === bc) return `column ${ac + 1}`;
+  if (boxIndex(ar, ac) === boxIndex(br, bc)) return `box ${boxIndex(ar, ac) + 1}`;
+  return cageLabel(board.cageAt(ar, ac)!);
 }
 
 /**
@@ -1181,6 +1190,281 @@ export function fortyFiveSets(board: Board, cg: CandGrid): Hint | null {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Chains
+// ---------------------------------------------------------------------------
+
+// One general search rather than a shelf of named patterns — see
+// docs/adr/0007-sudoku-chains-are-one-general-search.md. X-chains, XY-chains,
+// Turbot Fish, Skyscrapers, Simple Colouring's eliminations and XY-Wings all
+// fall out of it as chains of particular shapes.
+
+/** A candidate as the search sees it: `digit` in the Cell at row-major `cell`. */
+interface ChainNode {
+  cell: number;
+  digit: number;
+}
+
+/**
+ * Why one node of a chain forces the next.
+ *
+ * Strong links carry "if not this, then that": a Cell with only two candidates
+ * (`bivalue`), or a digit with only two places left in a Unit (`bilocal`). Weak
+ * links carry "if this, then not that": two digits in one Cell (`cell`), or one
+ * digit in two Cells that see each other (`peer`).
+ */
+type ChainLink =
+  | { kind: "bivalue" }
+  | { kind: "bilocal"; unit: string }
+  | { kind: "cell" }
+  | { kind: "peer"; via: string };
+
+/** A node reached by the search, with how it got there. `on` is whether the
+ * chain has it true at this point; the start is off, and it alternates. */
+interface ChainVisit {
+  node: ChainNode;
+  on: boolean;
+  link: ChainLink | null;
+  prev: ChainVisit | null;
+  length: number;
+}
+
+/** The eliminations a chain's two ends justify, when there are any. */
+interface ChainConclusion {
+  cells: Coord[];
+  digits: number[];
+  why: string;
+}
+
+// How many nodes a chain may run to. The reference board for issue #61 needs
+// eight; past sixteen the explanation is a page long and no longer something a
+// player would follow by hand, which is the only reason to offer it.
+export const MAX_CHAIN = 16;
+
+const nodeKey = ({ cell, digit }: ChainNode, on: boolean): number => (cell * 10 + digit) * 2 + (on ? 1 : 0);
+
+const nodeName = ({ cell }: ChainNode): string => cellName(...rc(cell));
+
+/** A Unit's label, and for each digit the empty Cells in it that hold it. */
+interface UnitHolders {
+  label: string;
+  holders: number[][];
+}
+
+/** The 27 Units, each with the Cells holding each digit. Built once per search: the links are what the search reads, over and
+ * over, and the grid they come from does not change while it runs. */
+function unitHolders(board: Board, cg: CandGrid): UnitHolders[] {
+  const out: UnitHolders[] = [];
+  for (const [label, cells] of board.units()) {
+    const holders: number[][] = Array.from({ length: 10 }, () => []);
+    for (const [r, c] of empties(cells, cg)) {
+      for (const d of cand(cg, [r, c])) holders[d].push(idx(r, c));
+    }
+    out.push({ label, holders });
+  }
+  return out;
+}
+
+/**
+ * What `a` or `z` being true rules out, if anything.
+ *
+ * A chain started from `a` assumed *false* and ended on `z` inferred *true*
+ * proves `a ∨ z`: at least one holds. Starting from `a` assumed true would prove
+ * only `a ⇒ z`, and nothing seeing both ends could be eliminated on that — the
+ * parity issue #61 warns about, and the reason `on` exists at all.
+ */
+function concludeChain(
+  board: Board,
+  cg: CandGrid,
+  a: ChainNode,
+  z: ChainNode,
+): ChainConclusion | null {
+  const both = `either ${nodeName(a)} is ${a.digit} or ${nodeName(z)} is ${z.digit}`;
+  if (a.cell === z.cell) {
+    const [r, c] = rc(a.cell);
+    const others = sortNums([...cg.get(a.cell)!].filter((d) => d !== a.digit && d !== z.digit));
+    if (others.length === 0) return null;
+    return {
+      cells: [[r, c]],
+      digits: others,
+      why: `So ${nodeName(a)} is ${a.digit} or ${z.digit}, and ${orList(others)} can be removed from it.`,
+    };
+  }
+  if (a.digit === z.digit) {
+    const d = a.digit;
+    const seeA = board.peers(...rc(a.cell));
+    const seeZ = board.peers(...rc(z.cell));
+    const cells: Coord[] = [];
+    for (const [i, cands] of cg) {
+      if (i !== a.cell && i !== z.cell && cands.has(d) && seeA.has(i) && seeZ.has(i)) cells.push(rc(i));
+    }
+    if (cells.length === 0) return null;
+    const verb = cells.length === 1 ? "sees" : "see";
+    return {
+      cells,
+      digits: [d],
+      why:
+        `So ${nodeName(a)} or ${nodeName(z)} is ${d} — at least one of them. ` +
+        `${names(cells)} ${verb} both, so ${d} is removed from ${cells.length === 1 ? "it" : "them"}.`,
+    };
+  }
+  if (!board.peers(...rc(a.cell)).has(z.cell)) return null;
+  // Two digits in two Cells that see each other: either end's Cell cannot hold
+  // the other end's digit. One Cell's worth is enough for a Hint — the chain
+  // read backwards finds the other on the next pass.
+  for (const [here, there] of [
+    [a, z],
+    [z, a],
+  ] as const) {
+    if (!cg.get(here.cell)!.has(there.digit)) continue;
+    const [r, c] = rc(here.cell);
+    return {
+      cells: [[r, c]],
+      digits: [there.digit],
+      why:
+        `So ${both}. Were ${nodeName(here)} ${there.digit}, it would not be ${here.digit}, ` +
+        `and ${nodeName(there)}, which it sees, could not be ${there.digit} — so ` +
+        `${there.digit} is removed from ${nodeName(here)}.`,
+    };
+  }
+  return null;
+}
+
+/** One link of a chain, as a sentence: what the previous node's state forces
+ * on `step`'s. */
+function linkSentence(step: ChainVisit): string {
+  const { node, link, prev } = step;
+  const here = nodeName(node);
+  const d = node.digit;
+  switch (link!.kind) {
+    case "bilocal":
+      return `Then ${link!.unit} has nowhere else for ${d} but ${here}, so ${here} is ${d}.`;
+    case "bivalue":
+      return `Then ${here}, which holds only ${prev!.node.digit} and ${d}, is ${d}.`;
+    case "cell":
+      return `That leaves no room for ${d} in ${here}.`;
+    case "peer":
+      return `So ${here}, which shares ${link!.via} with ${nodeName(prev!.node)}, is not ${d}.`;
+  }
+}
+
+/** The chain from its start to `end`, oldest first. */
+function chainVisits(end: ChainVisit): ChainVisit[] {
+  const out: ChainVisit[] = [];
+  for (let s: ChainVisit | null = end; s !== null; s = s.prev) out.unshift(s);
+  return out;
+}
+
+/**
+ * Alternating inference chains: strong link, weak link, strong link, ... from a
+ * candidate assumed false to one inferred true, proving at least one of the two
+ * ends holds — and eliminating whatever that rules out.
+ *
+ * Strong links come from bivalue Cells and from digits with two places left in
+ * a Unit; weak links from any two candidates that cannot both be true, which on
+ * a Killer board includes Cage-mates. Every start is searched breadth-first,
+ * and the shortest chain that eliminates anything wins, first in board order
+ * among equals — the shortest argument is the one worth reading.
+ *
+ * Last in the catalogue, and named by shape only in the wording: a chain on one
+ * digit is an X-chain, one made only of bivalue Cells an XY-chain, anything
+ * else an alternating inference chain.
+ */
+export function chain(board: Board, cg: CandGrid): Hint | null {
+  const units = unitHolders(board, cg);
+  // A Cell's row, column and box, as indices into `units` — the order
+  // `Board.units` yields them in.
+  const unitsOf = (cell: number): number[] => {
+    const [r, c] = rc(cell);
+    return [r, 9 + c, 18 + boxIndex(r, c)];
+  };
+
+  const strong = function* ({ cell, digit }: ChainNode): Generator<[ChainNode, ChainLink]> {
+    const cands = cg.get(cell)!;
+    if (cands.size === 2) {
+      for (const d of cands) if (d !== digit) yield [{ cell, digit: d }, { kind: "bivalue" }];
+    }
+    for (const u of unitsOf(cell)) {
+      const holders = units[u].holders[digit];
+      if (holders.length !== 2) continue;
+      const other = holders[0] === cell ? holders[1] : holders[0];
+      yield [{ cell: other, digit }, { kind: "bilocal", unit: units[u].label }];
+    }
+  };
+
+  const weak = function* ({ cell, digit }: ChainNode): Generator<[ChainNode, ChainLink]> {
+    for (const d of sortNums(cg.get(cell)!)) {
+      if (d !== digit) yield [{ cell, digit: d }, { kind: "cell" }];
+    }
+    for (const p of sortNums(board.peers(...rc(cell)))) {
+      if (cg.get(p)?.has(digit)) yield [{ cell: p, digit }, { kind: "peer", via: sharedGroup(board, cell, p) }];
+    }
+  };
+
+  let best: [ChainVisit, ChainConclusion] | null = null;
+  for (const [cell, cands] of cg) {
+    for (const digit of sortNums(cands)) {
+      const bound = best === null ? MAX_CHAIN : best[0].length - 1;
+      const found = searchFrom({ cell, digit }, bound);
+      if (found !== null) best = found;
+    }
+  }
+  if (best === null) return null;
+
+  function searchFrom(start: ChainNode, bound: number): [ChainVisit, ChainConclusion] | null {
+    const seen = new Set<number>([nodeKey(start, false)]);
+    let frontier: ChainVisit[] = [{ node: start, on: false, link: null, prev: null, length: 1 }];
+    while (frontier.length > 0 && frontier[0].length < bound) {
+      const next: ChainVisit[] = [];
+      for (const step of frontier) {
+        for (const [node, link] of step.on ? weak(step.node) : strong(step.node)) {
+          const key = nodeKey(node, !step.on);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const reached: ChainVisit = { node, on: !step.on, link, prev: step, length: step.length + 1 };
+          // Back at the start, now true, would place it rather than eliminate —
+          // a different argument, and not one this search words.
+          if (reached.on && key !== nodeKey(start, true)) {
+            const conclusion = concludeChain(board, cg, start, node);
+            if (conclusion !== null) return [reached, conclusion];
+          }
+          next.push(reached);
+        }
+      }
+      frontier = next;
+    }
+    return null;
+  }
+
+  const [end, conclusion] = best;
+  const steps = chainVisits(end);
+  const start = steps[0].node;
+  const strongLinks = steps.filter((s) => s.link?.kind === "bivalue" || s.link?.kind === "bilocal");
+  const technique = steps.every((s) => s.node.digit === start.digit)
+    ? "X-chain"
+    : strongLinks.every((s) => s.link!.kind === "bivalue")
+      ? "XY-chain"
+      : "Alternating inference chain";
+  const first = steps[1].link!;
+  const unitLabels: string[] = [];
+  for (const s of strongLinks) {
+    if (s.link!.kind === "bilocal" && !unitLabels.includes(s.link!.unit)) unitLabels.push(s.link!.unit);
+  }
+  return {
+    technique,
+    level: 8,
+    action: "eliminate",
+    cells: conclusion.cells,
+    digits: conclusion.digits,
+    units: unitLabels,
+    focus: first.kind === "bilocal" ? `the ${start.digit}s in ${first.unit}` : nodeName(start),
+    explanation:
+      `Suppose ${nodeName(start)} is not ${start.digit}. ` +
+      steps.slice(1).map(linkSentence).join(" ") +
+      ` ${conclusion.why}`,
+  };
+}
+
 export type Technique = (board: Board, cg: CandGrid) => Hint | null;
 
 /**
@@ -1209,7 +1493,10 @@ export const TECHNIQUES: Technique[] = [
   claiming,
   cagePointing,
   xWing,
-  // Last: the hardest of these to see by hand, and it only ever fires when
+  // The hardest of the Killer ones to see by hand, and it only ever fires when
   // everything simpler has already been exhausted.
   fortyFiveSets,
+  // Last of all: a chain is the longest argument in the catalogue, and the
+  // general search behind it would also rediscover much of what sits above.
+  chain,
 ];
